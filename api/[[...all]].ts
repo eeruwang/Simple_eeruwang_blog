@@ -1,4 +1,6 @@
 // api/[[...all]].ts
+export const config = { runtime: "nodejs20.x" };
+
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { renderIndex } from "../routes/public/index.js";
