@@ -1,5 +1,5 @@
 // lib/pages/editor.ts
-// 에디터 HTML 페이지 렌더러
+// 에디터 HTML 페이지 렌더러 (로그인 후 동적 import 로 부팅)
 
 export type EditorPageOptions = { version?: string };
 
@@ -15,19 +15,23 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
 <link rel="stylesheet" href="/assets/style.css">
 <style>
-  /* 인증 전엔 편집 버튼 숨김 */
-  .auth-only{display:none}
-  .authed .auth-only{display:inline-flex}
-  /* 오버레이 기본 표시 (인증되면 JS로 숨김) */
+  /* 로그인 전엔 .auth-only 숨김 */
+  .auth-only { display:none }
+  .authed .auth-only { display:inline-flex }
+
+  /* 로그인 오버레이 */
   #lock{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1000}
   #lock .panel{background:#fff;padding:16px 18px;border-radius:10px;min-width:280px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
   #lock .row{display:flex;gap:8px}
   #lock .hint{margin-top:8px;font-size:12px;opacity:.8}
+
+  /* 폴백: 에디터 초기화 실패해도 textarea는 보이게 */
+  #md{display:block; min-height:320px}
 </style>
 </head>
 <body class="editor-page">
-  <!-- 잠금 오버레이 -->
-  <div id="lock">
+  <!-- 로그인 오버레이 -->
+  <div id="lock" style="display:none">
     <div class="panel">
       <h2>Editor 로그인</h2>
       <div class="row">
@@ -38,7 +42,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
-  <!-- 상단 기본 헤더 -->
+  <!-- 상단 헤더 -->
   <header>
     <button class="auth-only" id="new">New</button>
     <button class="auth-only" id="save">Save Draft</button>
@@ -50,6 +54,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     <a href="/" style="margin-left:auto;opacity:.8" data-back>← 목록</a>
   </header>
 
+  <!-- 툴바 -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
     <button id="sideToggle" class="only-mobile" type="button" aria-controls="postVirtualList" aria-expanded="false">☰ 목록</button>
     <select id="filterSelect" aria-label="filter">
@@ -68,6 +73,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <div class="wrap">
     <div class="editor-layout">
+      <!-- 좌측 목록 -->
       <aside class="editor-side side" aria-label="posts panel">
         <div class="side-head">
           <input id="searchInput" type="text" aria-label="Search posts" placeholder="제목/태그 검색…" />
@@ -124,7 +130,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 
-  <!-- 로마자 모듈 사전 로드 -->
+  <!-- 로마자 모듈 프리로드 -->
   <script type="module">
     (async () => {
       try {
@@ -138,7 +144,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     })();
   </script>
 
-  <!-- ✅ 인증 오버레이 제어 -->
+  <!-- 인증 & 부트스트랩 -->
   <script type="module">
     const $ = (s) => document.querySelector(s);
 
@@ -160,25 +166,49 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       } catch { return false; }
     }
 
+    // ✅ 로그인 성공 후 editor.js를 "동적 import" 해서 초기화
+    let __booted = false;
+    async function bootEditor(){
+      if (__booted) return; __booted = true;
+      const hint = $("#hint");
+      try {
+        // /assets/editor.js가 ESM을 export하는 경우
+        const mod = await import("/assets/editor.js?v=${ver}");
+        const init =
+          (mod && (mod.initEditor || mod.default)) ||
+          // UMD/전역 방식도 호환
+          (window.initEditor || (window.EditorApp && window.EditorApp.init));
+        if (typeof init === "function") {
+          await init();
+          if (hint) hint.textContent = "";
+        } else {
+          if (hint) hint.textContent = "editor.js: init 함수를 찾을 수 없습니다.";
+          console.warn("editor.js init not found. Export initEditor() or default.");
+        }
+      } catch (e) {
+        console.error("Editor boot failed:", e);
+        if (hint) hint.textContent = "에디터 초기화 실패: " + (e && e.message ? e.message : e);
+      }
+    }
+
     async function requireAuth(){
       const lock = $("#lock");
       const input= $("#key");
       const btn  = $("#signin");
       const hint = $("#lock-hint");
 
-      // 1) 자동 시도
+      // 자동 시도
       const existing = getToken();
       if (await checkKey(existing)) {
         if (lock) lock.style.display = "none";
         document.body.classList.add("authed");
-        window.dispatchEvent(new CustomEvent("editor-auth-ok"));
+        await bootEditor();
         return;
       }
 
-      // 2) 오버레이 표시 + 수동 로그인
+      // 수동 로그인
       if (lock) lock.style.display = "";
       document.body.classList.remove("authed");
-
       async function submit(){
         const tok = (input && input.value) ? String(input.value).trim() : "";
         if (!tok) { if (hint) hint.textContent = "비밀번호를 입력하세요."; return; }
@@ -189,27 +219,17 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
           if (hint) hint.textContent = "";
           if (lock) lock.style.display = "none";
           document.body.classList.add("authed");
-          window.dispatchEvent(new CustomEvent("editor-auth-ok"));
+          await bootEditor();
         } else {
           if (hint) hint.textContent = "비밀번호가 올바르지 않습니다.";
           if (input && input.select) input.select();
         }
       }
-
       if (btn) btn.addEventListener("click", (e)=>{ e.preventDefault(); submit(); });
       if (input) input.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
     }
 
     window.addEventListener("DOMContentLoaded", requireAuth);
-
-    // (옵션) 로그아웃 전역 함수
-    window.logoutEditor = function(){
-      try { localStorage.removeItem("editor_token"); } catch {}
-      document.cookie = "editor_token=; Path=/; Max-Age=0; SameSite=Lax; Secure";
-      const lock = document.getElementById("lock");
-      if (lock) lock.style.display = "";
-      document.body.classList.remove("authed");
-    };
   </script>
 
   <!-- 모바일 사이드바 토글 -->
@@ -256,7 +276,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       const ta=document.getElementById("md");
       const hint=document.getElementById("hint");
       if (!btn||!input||!ta) return;
-      btn.addEventListener("click", ()=>{ input.click && input.click(); });
+      btn.addEventListener("click", ()=>{ input && input.click && input.click(); });
       input.addEventListener("change", async ()=>{
         const files = input.files ? Array.from(input.files) : [];
         if (!files.length) return;
@@ -275,7 +295,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     });
   </script>
 
-  <script src="/assets/editor.js?v=${ver}"></script>
 </body>
 </html>`;
 }
