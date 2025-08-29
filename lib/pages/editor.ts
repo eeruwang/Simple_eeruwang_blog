@@ -17,7 +17,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <meta name="robots" content="noindex, nofollow">
 <title>Editor</title>
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body class="editor-page">
   <div id="lock">
