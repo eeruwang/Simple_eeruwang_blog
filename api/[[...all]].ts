@@ -267,7 +267,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 4) 에디터 HTML
     if (path === "/editor" && req.method === "GET") {
-      let html = renderEditorHTML({ version: process.env.EDITOR_ASSET_VER || "v8" });
+      let html = renderEditorHTML({ version: process.env.EDITOR_ASSET_VER || "v12" });
       if (!/\/assets\/editor\.js/.test(html)) {
         const inject = `<script src="/assets/editor.js" defer></script>`;
         html = html.includes("</body>")
