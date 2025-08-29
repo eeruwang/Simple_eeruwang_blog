@@ -2,9 +2,7 @@
   "name": "everyeightseconds",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20 <21" },
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env server/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
