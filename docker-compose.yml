@@ -1,0 +1,49 @@
+services:
+  db:
+    image: postgres:17
+    container_name: blog_db
+    environment:
+      POSTGRES_DB: notes
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      TZ: Europe/London
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 볼륨이 비어있을 때만 초기 1회 실행
+      - ./lib/db/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d notes"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    ports:
+      - "5432:5432"  # 로컬 클라이언트가 필요 없으면 제거해도 됨
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: blog_web
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: postgres://app:app@db:5432/notes?sslmode=disable
+      NODE_ENV: production
+      TZ: Europe/London
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  pgdata:

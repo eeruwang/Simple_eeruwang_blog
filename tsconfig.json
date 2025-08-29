@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": ".",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  },
+  "include": [
+    "lib/**/*.ts",
+    "routes/**/*.ts",
+    "api/**/*.ts",
+    "views/**/*.ts",
+    "src/**/*.ts",
+    "db/**/*.ts",
+    "**/*.d.ts",
+    "routes/public/rss.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
