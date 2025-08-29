@@ -25,8 +25,11 @@ export type PostRow = {
   updated_at: string;
 };
 
+// 배열이면서 .rows도 가진 타입 (두 패턴 모두 호환)
+type Rows<T> = T[] & { rows: T[] };
+
 type Queryable = {
-  query<T = unknown>(text: string, params?: any[]): Promise<{ rows: T[] }>;
+  query<T = unknown>(text: string, params?: any[]): Promise<Rows<T>>;
   end?: () => Promise<void>;
 };
 
@@ -64,10 +67,11 @@ async function createClient(): Promise<Queryable> {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(DATABASE_URL);
 
-    // Array params를 받는 query 래퍼 제공
+    // Array params를 받는 query 래퍼 제공 (배열 + .rows 둘 다 제공)
     const query = async <T = unknown>(text: string, params: any[] = []) => {
-      const res = await (sql as any).unsafe(text, params);
-      return { rows: res as T[] };
+      const arr = (await (sql as any).unsafe(text, params)) as T[];
+      (arr as any).rows = arr;
+      return arr as Rows<T>;
     };
 
     return { query };
@@ -86,14 +90,19 @@ async function createClient(): Promise<Queryable> {
       });
     }
     const pool = g.__pgPool;
+
     const query: Queryable["query"] = async (text, params) => {
       const res = await pool.query(text, params);
-      return { rows: res.rows as any[] };
+      const arr = res.rows as any[];
+      (arr as any).rows = arr;
+      return arr as Rows<any>;
     };
+
     const end: Queryable["end"] = async () => {
       await pool.end().catch(() => {});
       g.__pgPool = undefined;
     };
+
     return { query, end };
   }
 }
@@ -105,7 +114,7 @@ async function getClient(): Promise<Queryable> {
 
 export async function query<T = unknown>(text: string, params?: any[]) {
   const client = await getClient();
-  return client.query<T>(text, params);
+  return client.query<T>(text, params); // 반환: Rows<T>
 }
 
 // 작은 유틸
@@ -120,7 +129,7 @@ function pageOffset(page = 1, perPage = 10) {
 
 // DB 헬스체크
 export async function pingDb() {
-  const { rows } = await query<{ now: string }>("select now() as now");
+  const rows = await query<{ now: string }>("select now() as now");
   return { now: rows[0]?.now };
 }
 
@@ -129,7 +138,7 @@ export async function pingDb() {
 /** 목록(게시글만) */
 export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
   const { take, offset } = pageOffset(page, perPage);
-  const { rows } = await query<PostRow>(
+  const rows = await query<PostRow>(
     `
     select *
     from posts
@@ -145,7 +154,7 @@ export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
 /** 태그별 목록 */
 export async function listByTag(tag: string, page = 1, perPage = 10): Promise<PostRow[]> {
   const { take, offset } = pageOffset(page, perPage);
-  const { rows } = await query<PostRow>(
+  const rows = await query<PostRow>(
     `
     select *
     from posts
@@ -162,7 +171,7 @@ export async function listByTag(tag: string, page = 1, perPage = 10): Promise<Po
 
 /** 슬러그로 조회(포스트/페이지 공용) */
 export async function getBySlug(slug: string): Promise<PostRow | null> {
-  const { rows } = await query<PostRow>(
+  const rows = await query<PostRow>(
     `select * from posts where slug = $1 limit 1`,
     [slug]
   );
