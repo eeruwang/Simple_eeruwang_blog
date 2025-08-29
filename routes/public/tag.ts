@@ -1,4 +1,3 @@
-// src/routes/public/tag.ts
 /* ───────── 태그 라우트 (Postgres 버전) ─────────
  * - /tag/:tag 목록을 Postgres에서 조회 (게시글만, 페이지 제외)
  * - 서버 페이지네이션 + 클라이언트 필터 UI 유지
@@ -10,7 +9,7 @@ import { getTags, tagsHtml } from "../../lib/render/tags.js";
 import { renderTagBar, getConfiguredTags, TAG_SCRIPT } from "../../lib/render/tags-ui.js";
 import { renderBannerRail } from "../../lib/render/banners.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
-import { listByTag, type PostRow } from "../../lib/db/db.js";
+import { listByTag, type PostRow, asArrayRows } from "../../lib/db/db.js";
 
 type Env = {
   SITE_NAME?: string;
@@ -26,7 +25,8 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
   if (!tNorm) return new Response("Not found", { status: 404 });
 
   // look-ahead: 다음 페이지 유무 계산을 위해 perPage+1개 요청
-  const rows: PostRow[] = await listByTag(tNorm, page, perPage + 1);
+  const raw = await listByTag(tNorm, page, perPage + 1);
+  const rows: PostRow[] = asArrayRows<PostRow>(raw);
   const hasNext = rows.length > perPage;
   const pageItems = rows.slice(0, perPage);
 

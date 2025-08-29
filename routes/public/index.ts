@@ -1,4 +1,3 @@
-// src/routes/public/index.ts
 /* ───────── 메인 인덱스 (Postgres 버전) ─────────
  * - 최근 글을 Postgres에서 불러와 카드 형태로 렌더
  * - 상단 태그 레일 + 클라이언트 필터 스크립트
@@ -10,20 +9,23 @@ import { escapeAttr, escapeHtml } from "../../lib/util.js";
 import { getTags, tagsHtml } from "../../lib/render/tags.js";
 import { renderTagBar, getConfiguredTags, TAG_SCRIPT } from "../../lib/render/tags-ui.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
-import { listPosts, type PostRow } from "../../lib/db/db.js";
+import { listPosts, type PostRow, asArrayRows } from "../../lib/db/db.js";
 import { renderBannerRail } from "../../lib/render/banners.js";
 
 type Env = {
   SITE_NAME?: string;
   SITE_URL?: string;
   NOTES_TAGS?: string;
+  SITE_BANNERS?: string;
+  BANNERS_JSON_URL?: string;
 };
 
 export async function renderIndex(env: Env, page: number = 1): Promise<Response> {
   const perPage = 10;
 
   // look-ahead: perPage+1 로 가져와 다음 페이지 유무 판별
-  const rows: PostRow[] = await listPosts(page, perPage + 1);
+  const raw = await listPosts(page, perPage + 1);
+  const rows: PostRow[] = asArrayRows<PostRow>(raw);
   const hasNext = rows.length > perPage;
   const list = rows.slice(0, perPage);
 

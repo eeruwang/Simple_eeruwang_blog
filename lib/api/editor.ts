@@ -1,4 +1,3 @@
-// lib/api/editor.ts
 // Postgres (pg) + Neon(serverless) 동시 지원, TS 완전판
 
 import { json, slugifyForApi } from "../util.js";
@@ -32,7 +31,7 @@ function requireEditor(request: Request, env: Env) {
     "";
   const got =
     request.headers.get("x-editor-token") ||
-    request.headers.get("x-editor-key") ||   // ← 추가 허용
+    request.headers.get("x-editor-key") ||
     new URL(request.url).searchParams.get("token") ||
     "";
   return Boolean(pass && got && pass === got);
@@ -147,7 +146,7 @@ export async function handleEditorApi(
   const isPostsRoot = pathname === "/api/posts";
   const matchPost = pathname.match(/^\/api\/posts\/([^/]+)$/);
   const matchUpload = pathname.match(/^\/api\/posts\/([^/]+)\/files$/);
-  const isPreview = pathname === "/api/posts/preview";  // ← 추가
+  const isPreview = pathname === "/api/posts/preview";
 
   // DB 초기화
   let db: DB;
@@ -165,7 +164,7 @@ export async function handleEditorApi(
 
       const { md } = await request.json().catch(() => ({ md: "" }));
       const src = typeof md === "string" ? md : "";
-      const html = mdToSafeHtml(src);            // ← 서버 렌더 + sanitize
+      const html = mdToSafeHtml(src);
       return json({ html });
     }
 
@@ -212,7 +211,6 @@ export async function handleEditorApi(
           const uniqueSlug = await ensureUniqueSlug(tx, desired);
 
           const published = !!b.published;
-          // published_at은 스키마 트리거가 처리하도록 입력이 없으면 null 전달
           const publishedAtExplicit =
             b.published_at && String(b.published_at).trim()
               ? String(b.published_at)
@@ -231,7 +229,7 @@ export async function handleEditorApi(
               b.excerpt ?? "",
               !!b.is_page,
               published,
-              publishedAtExplicit, // null이면 트리거가 자동 셋
+              publishedAtExplicit,
               b.cover_url ?? null,
             ]
           );
@@ -248,8 +246,7 @@ export async function handleEditorApi(
       return json(
         {
           error: "File upload not configured",
-          hint:
-            "Connect S3/R2/Supabase Storage and update this route.",
+          hint: "Connect S3/R2/Supabase Storage and update this route.",
         },
         501
       );
@@ -295,7 +292,7 @@ export async function handleEditorApi(
       const cur = curRows[0] as any;
       const id: number = cur.id;
 
-      // 태그 정리 (키가 존재하면 null/""도 허용 → [] 로 비우기)
+      // 태그 정리
       let tags: string[] | undefined;
       if (Object.prototype.hasOwnProperty.call(b, "tags")) {
         tags = Array.isArray(b.tags)
@@ -305,7 +302,10 @@ export async function handleEditorApi(
 
       // slug 보정(유니크)
       let newSlug: string | undefined;
-      if (Object.prototype.hasOwnProperty.call(b, "slug") || Object.prototype.hasOwnProperty.call(b, "title")) {
+      if (
+        Object.prototype.hasOwnProperty.call(b, "slug") ||
+        Object.prototype.hasOwnProperty.call(b, "title")
+      ) {
         const desired =
           (b.slug && String(b.slug)) ||
           slugifyForApi(b.title || cur.title || "") ||
@@ -314,7 +314,7 @@ export async function handleEditorApi(
         newSlug = await ensureUniqueSlug(db, desired, id);
       }
 
-      // 동적 필드 구성 (키가 존재하는지 기준 — 값이 빈 문자열이라도 반영)
+      // 동적 필드 구성
       const fields: Record<string, any> = {};
       if (Object.prototype.hasOwnProperty.call(b, "title"))       fields.title = b.title;
       if (Object.prototype.hasOwnProperty.call(b, "body_md"))     fields.body_md = b.body_md;
@@ -325,11 +325,9 @@ export async function handleEditorApi(
       if (tags !== undefined)                                      fields.tags = tags;
       if (Object.prototype.hasOwnProperty.call(b, "cover_url"))   fields.cover_url = b.cover_url;
 
-      // published_at: null/""이면 NULL로, 값이 있으면 문자열로
       if (Object.prototype.hasOwnProperty.call(b, "published_at")) {
         const v = b.published_at;
-        fields.published_at =
-          v == null || String(v).trim() === "" ? null : String(v);
+        fields.published_at = v == null || String(v).trim() === "" ? null : String(v);
       }
 
       if (Object.keys(fields).length === 0)

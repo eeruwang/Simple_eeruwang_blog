@@ -1,4 +1,3 @@
-// routes/public/post.ts
 /* ───────── 포스트 라우트 (Postgres 버전) ─────────
  * - /post/:slug 에서 글 상세 조회 (is_page=false)
  * - views/pageview.js의 renderPostPage()로 렌더
@@ -48,8 +47,7 @@ export async function renderPost(
 
   // SEO 메타 구성
   const site = (env.SITE_URL || "https://example.blog").replace(/\/+$/, "");
-  const desc =
-    rec.excerpt || deriveExcerptFromRecord(rec as any, 160) || "";
+  const desc = rec.excerpt || deriveExcerptFromRecord(rec as any, 160) || "";
   const headExtra = seoTags({
     siteUrl: site,
     path: `/post/${encodeURIComponent(rec.slug)}`,
