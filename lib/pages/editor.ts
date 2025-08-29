@@ -1,10 +1,7 @@
 // lib/pages/editor.ts
-// 에디터 HTML 페이지 렌더러 (로그인 후 동적 import 로 부팅)
-
 export type EditorPageOptions = { version?: string };
 
-export function renderEditorHTML(opts: EditorPageOptions = {}): string {
-  const ver = opts.version || "v14"; // 캐시 버스터
+export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -12,18 +9,20 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Editor</title>
+
+<!-- EasyMDE (CDN 고정) -->
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+
 <link rel="stylesheet" href="/assets/style.css">
 <style>
   /* 로그인 전 버튼/툴바 숨김 */
   .auth-only { display: none; }
   body.authed .auth-only { display: inline-flex !important; }
 
-  /* 외부 스타일이 레이아웃을 숨겨도 강제로 표시 */
+  /* 레이아웃 보장 */
   .editor-layout { display: grid !important; grid-template-columns: 280px 1fr 260px; gap: 12px; }
-  @media (max-width: 900px) {
-    .editor-layout { grid-template-columns: 1fr; }
-  }
+  @media (max-width: 900px) { .editor-layout { grid-template-columns: 1fr; } }
 
   /* 로그인 오버레이 */
   #lock{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1000}
@@ -134,9 +133,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
-  <!-- EasyMDE (전역) -->
-  <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
-
   <!-- 인증 & 부트스트랩 -->
   <script type="module">
     const $ = (s) => document.querySelector(s);
@@ -159,17 +155,18 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       } catch { return false; }
     }
 
-    // 로그인 성공 후 /assets/editor.js를 동적 import → initEditor() 실행
+    // 로그인 성공 → /assets/editor.js 동적 import → initEditor()
     let __booted = false;
     async function bootEditor(){
       if (__booted) return; __booted = true;
       const hint = $("#hint");
       try {
-        const mod = await import("/assets/editor.js?v=${ver}");
-        const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor || (window.EditorApp && window.EditorApp.init));
+        // 캐시 무시
+        const mod = await import("/assets/editor.js?ts=" + Date.now());
+        const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor);
         if (typeof init === "function") {
           await init();
-          document.body.classList.add("editor-ready"); // UI 표시 보조
+          document.body.classList.add("editor-ready");
           if (hint) hint.textContent = "";
         } else {
           if (hint) hint.textContent = "editor.js: init 함수를 찾을 수 없습니다.";
@@ -217,8 +214,8 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
         }
       }
 
-      if (btn) btn.addEventListener("click", function(e){ e.preventDefault(); submit(); });
-      if (input) input.addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
+      if (btn) btn.addEventListener("click", (e)=>{ e.preventDefault(); submit(); });
+      if (input) input.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
     }
 
     window.addEventListener("DOMContentLoaded", requireAuth);
@@ -234,12 +231,12 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       const mq=window.matchMedia('(max-width: 900px)'); const isM=()=>mq.matches;
       function open(){ document.body.classList.add('side-open'); btn.setAttribute('aria-expanded','true'); if(isM()) document.body.classList.add('no-scroll'); }
       function close(){ document.body.classList.remove('side-open','no-scroll'); btn.setAttribute('aria-expanded','false'); }
-      btn.addEventListener('click',function(e){ e.preventDefault(); document.body.classList.contains('side-open')?close():open(); });
+      btn.addEventListener('click',(e)=>{ e.preventDefault(); document.body.classList.contains('side-open')?close():open(); });
       bd.addEventListener('click', close);
-      document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
-      side.addEventListener('click',function(e){ var t=e.target; var row=t && t.closest ? t.closest('.virtual-row') : null; if(row && isM()) setTimeout(close,0); });
-      if (mq.addEventListener) mq.addEventListener('change',function(){ if(!isM()) close(); });
-      window.addEventListener('resize',function(){ if(!isM()) close(); });
+      document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close(); });
+      side.addEventListener('click',(e)=>{ const t=e.target; const row=t && t.closest ? t.closest('.virtual-row') : null; if(row && isM()) setTimeout(close,0); });
+      mq.addEventListener?.('change',()=>{ if(!isM()) close(); });
+      window.addEventListener('resize',()=>{ if(!isM()) close(); });
     })();
   </script>
 
@@ -255,38 +252,38 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       if (!t) throw new Error("에디터 토큰이 없습니다. 먼저 로그인하세요.");
       const fd = new FormData(); fd.set("file", file);
       const r = await fetch("/api/upload", { method:"POST", body:fd, headers:{ "x-editor-token": t }});
-      const j = await r.json().catch(function(){ return {}; });
+      const j = await r.json().catch(()=>({}));
       if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed"); return j.url;
     }
     function insertAtCursor(ta, text){
-      var s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
-      var e = ta.selectionEnd   != null ? ta.selectionEnd   : ta.value.length;
-      var before=ta.value.slice(0,s), after=ta.value.slice(e);
+      const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      const e = ta.selectionEnd   != null ? ta.selectionEnd   : ta.value.length;
+      const before=ta.value.slice(0,s), after=ta.value.slice(e);
       ta.value = before + text + after;
-      var pos = s + text.length;
+      const pos = s + text.length;
       if (ta.setSelectionRange) ta.setSelectionRange(pos,pos);
       ta.dispatchEvent(new Event("input",{bubbles:true}));
     }
     window.addEventListener("DOMContentLoaded", function(){
-      var btn=document.getElementById("attachBtn");
-      var input=document.getElementById("attach");
-      var ta=document.getElementById("md");
-      var hint=document.getElementById("hint");
+      const btn=document.getElementById("attachBtn");
+      const input=document.getElementById("attach");
+      const ta=document.getElementById("md");
+      const hint=document.getElementById("hint");
       if (!btn||!input||!ta) return;
-      btn.addEventListener("click", function(){ if (input && input.click) input.click(); });
-      input.addEventListener("change", async function(){
-        var files = input.files ? Array.prototype.slice.call(input.files) : [];
+      btn.addEventListener("click", ()=>{ input && input.click && input.click(); });
+      input.addEventListener("change", async ()=>{
+        const files = input.files ? Array.from(input.files) : [];
         if (!files.length) return;
         try {
-          var urls=[]; for (var i=0;i<files.length;i++){ urls.push(await uploadImage(files[i])); }
-          insertAtCursor(ta, urls.map(function(u){ return "![](" + u + ")"; }).join("\\n\\n"));
+          const urls=[]; for (let i=0;i<files.length;i++){ urls.push(await uploadImage(files[i])); }
+          insertAtCursor(ta, urls.map(u => "![](" + u + ")").join("\\n\\n"));
           if (hint) hint.textContent = "이미지 " + urls.length + "개 첨부됨.";
         } catch(e){
           if (hint) hint.textContent = "이미지 업로드 실패: " + (e && e.message ? e.message : String(e));
           console.error(e);
         } finally {
           input.value = "";
-          setTimeout(function(){ if (hint) hint.textContent=""; }, 4000);
+          setTimeout(()=>{ if (hint) hint.textContent=""; }, 4000);
         }
       });
     });
