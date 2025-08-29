@@ -1,7 +1,7 @@
 // lib/pages/editor.ts
 // 에디터 HTML 페이지 렌더러 (런타임 불문 재사용)
 // - 정적 클라이언트 스크립트: /assets/editor.js
-// - 전역 스타일: /style.css
+// - 전역 스타일: /assets/style.css
 
 export type EditorPageOptions = {
   version?: string; // 캐시 버스터
@@ -20,17 +20,19 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body class="editor-page">
-  <div id="lock">
+  <!-- 잠금 오버레이 (로그인 UI) -->
+  <div id="lock" style="display:none">
     <div class="panel">
       <h2>Editor 로그인</h2>
       <div class="row">
         <input id="key" type="password" placeholder="Editor password" />
         <button id="signin">Sign in</button>
       </div>
-      <div class="hint" id="lock-hint"></div>
+      <div class="hint" id="lock-hint" aria-live="polite"></div>
     </div>
   </div>
 
+  <!-- 상단 헤더 -->
   <header>
     <button class="auth-only" id="new">New</button>
     <button class="auth-only" id="save">Save Draft</button>
@@ -42,6 +44,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     <a href="/" style="margin-left:auto;opacity:.8" data-back>← 목록</a>
   </header>
 
+  <!-- 스티키 툴바 -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
     <button id="sideToggle" class="only-mobile" type="button" aria-controls="postVirtualList" aria-expanded="false">☰ 목록</button>
 
@@ -64,6 +67,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <div class="wrap">
     <div class="editor-layout">
+      <!-- 좌측 목록 -->
       <aside class="editor-side side" aria-label="posts panel">
         <div class="side-head">
           <input id="searchInput" type="text" aria-label="Search posts" placeholder="제목/태그 검색…" />
@@ -136,7 +140,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     })();
   </script>
 
-  <!-- 모바일 사이드바 오버레이 토글 (순수 JS) -->
+  <!-- 모바일 사이드바 오버레이 토글 -->
   <script type="module">
     (function(){
       const side     = document.querySelector('.editor-side');
@@ -178,11 +182,17 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     })();
   </script>
 
-  <!-- 이미지 업로드 → 본문 삽입 (순수 JS) -->
+  <!-- 이미지 업로드 → 본문 삽입 -->
   <script type="module">
     function getToken() {
-      return localStorage.getItem("editor_token") || "";
+      try {
+        const t = localStorage.getItem("editor_token");
+        if (t) return t;
+      } catch {}
+      const m = document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/);
+      return m ? decodeURIComponent(m[1]) : "";
     }
+
     async function uploadImage(file) {
       const token = getToken();
       if (!token) throw new Error("에디터 토큰이 없습니다. 먼저 로그인하세요.");
@@ -197,40 +207,58 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed");
       return j.url;
     }
+
     function insertAtCursor(textarea, text) {
-      var start = textarea.selectionStart != null ? textarea.selectionStart : textarea.value.length;
-      var end   = textarea.selectionEnd   != null ? textarea.selectionEnd   : textarea.value.length;
-      var before= textarea.value.slice(0, start);
-      var after = textarea.value.slice(end);
+      const start = textarea.selectionStart != null ? textarea.selectionStart : textarea.value.length;
+      const end   = textarea.selectionEnd   != null ? textarea.selectionEnd   : textarea.value.length;
+      const before= textarea.value.slice(0, start);
+      const after = textarea.value.slice(end);
       textarea.value = before + text + after;
-      var pos = start + text.length;
+      const pos = start + text.length;
       if (textarea.setSelectionRange) textarea.setSelectionRange(pos, pos);
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     }
 
     window.addEventListener("DOMContentLoaded", function() {
-      var btn = document.getElementById("attachBtn");
-      var input = document.getElementById("attach");
-      var ta = document.getElementById("md");
+      const btn   = document.getElementById("attachBtn");
+      const input = document.getElementById("attach");
+      const ta    = document.getElementById("md");
+      const hintEl= document.getElementById("hint");
       if (!btn || !input || !ta) return;
 
-      btn.addEventListener("click", function(){ (input as any).click && (input as any).click(); });
+      btn.addEventListener("click", function(){
+        if (typeof (input as any) === "undefined") { /* TS 회피용 no-op */ }
+        if (input && typeof (input as HTMLInputElement).click === "function") {
+          (input as HTMLInputElement).click();
+        } else {
+          // 순수 JS: 타입 캐스트 없이 안전 호출
+          // @ts-ignore-next-line
+          if (input && input.click) input.click();
+        }
+      });
+
       input.addEventListener("change", async function() {
-        var files = Array.prototype.slice.call((input as any).files || []);
+        // @ts-ignore-next-line
+        const files = input && input.files ? Array.from(input.files) : [];
         if (!files.length) return;
         try {
-          var urls = [];
-          for (var i=0;i<files.length;i++) {
-            var url = await uploadImage(files[i]);
+          const urls = [];
+          for (let i = 0; i < files.length; i++) {
+            const url = await uploadImage(files[i]);
             urls.push(url);
           }
-          var md = urls.map(function(u){ return "![](" + u + ")"; }).join("\\n\\n");
-          insertAtCursor(ta as any, md);
+          const md = urls.map(function(u){ return "![](" + u + ")"; }).join("\\n\\n");
+          // @ts-ignore-next-line
+          insertAtCursor(ta, md);
+          if (hintEl) hintEl.textContent = "이미지 " + urls.length + "개 첨부됨.";
         } catch (e) {
-          alert("이미지 업로드 실패: " + (e && e.message ? e.message : e));
+          const msg = (e && (e as any).message) ? (e as any).message : String(e);
+          if (hintEl) hintEl.textContent = "이미지 업로드 실패: " + msg;
           console.error(e);
         } finally {
-          (input as any).value = "";
+          // @ts-ignore-next-line
+          if (input) input.value = "";
+          setTimeout(function(){ if (hintEl) hintEl.textContent = ""; }, 4000);
         }
       });
     });
