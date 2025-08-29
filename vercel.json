@@ -3,11 +3,11 @@
     "api/**/*.ts": { "runtime": "nodejs20.x" }
   },
   "rewrites": [
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/favicon.ico", "destination": "/favicon.ico" },
-    { "source": "/robots.txt", "destination": "/robots.txt" },
-    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
+    { "source": "/assets/(.*)",   "destination": "/public/assets/$1" },
+    { "source": "/favicon.ico",   "destination": "/public/favicon.ico" },
+    { "source": "/robots.txt",    "destination": "/public/robots.txt" },
+    { "source": "/sitemap.xml",   "destination": "/public/sitemap.xml" },
 
-    { "source": "/(.*)", "destination": "/api/[[...all]]?path=$1" }
+    { "source": "/(.*)",          "destination": "/api/[[...all]]?path=$1" }
   ]
 }
