@@ -14,7 +14,7 @@
 ## 요구 사항
 
 * Node.js 20+
-* PostgreSQL 15+ (개발용은 Docker로 함께 실행 가능)
+* PostgreSQL 15+ (개발용은 Docker로 함께 실행 가능) 혹은 NEON with vercel
 * 선택: Docker/Compose v2, Vercel 계정
 
 ## 빠른 시작(로컬)
