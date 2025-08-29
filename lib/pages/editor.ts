@@ -4,7 +4,7 @@
 export type EditorPageOptions = { version?: string };
 
 export function renderEditorHTML(opts: EditorPageOptions = {}): string {
-  const ver = opts.version || "v12"; // 캐시 버스터
+  const ver = opts.version || "v13"; // 캐시 버스터
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -17,7 +17,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <style>
   /* 기본: 숨김 */
   .auth-only { display: none; }
-  /* 로그인 후: 확실히 보이게 !important */
+  /* 로그인 후: 확실히 보이게 */
   body.authed .auth-only { display: inline-flex !important; }
 
   /* 로그인 오버레이 */
@@ -132,21 +132,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
   <!-- EasyMDE (전역) -->
   <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 
-  <!-- 로마자 모듈 프리로드 -->
-  <script type="module">
-    (async () => {
-      try {
-        const mod = await import("https://esm.sh/korean-romanization");
-        const romanize = (mod && (mod.romanize || mod.default));
-        if (typeof romanize === "function") {
-          // @ts-ignore
-          window.__romanize = romanize;
-          window.dispatchEvent(new CustomEvent("romanize-loaded"));
-        }
-      } catch (e) { console.warn("romanization preload failed", e); }
-    })();
-  </script>
-
   <!-- 인증 & 부트스트랩 -->
   <script type="module">
     const $ = (s) => document.querySelector(s);
@@ -165,26 +150,20 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       try {
         const r = await fetch("/api/check-key", { headers: { "x-editor-token": tok }});
         const j = await r.json().catch(()=>({}));
-        console.debug("[editor] check-key:", r.status, j);
         return r.ok && j && j.ok === true;
-      } catch (e) {
-        console.warn("[editor] check-key fail:", e);
-        return false;
-      }
+      } catch { return false; }
     }
 
-    // 로그인 성공 후 editor.js를 동적 import → initEditor() 실행
+    // 로그인 성공 후 /assets/editor.js를 동적 import → initEditor() 실행
     let __booted = false;
     async function bootEditor(){
       if (__booted) return; __booted = true;
       const hint = $("#hint");
       try {
         const mod = await import("/assets/editor.js?v=${ver}");
-        const init = mod && (mod.initEditor || mod.default) || (window.initEditor || (window.EditorApp && window.EditorApp.init));
+        const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor || (window.EditorApp && window.EditorApp.init));
         if (typeof init === "function") {
-          console.debug("[editor] initEditor start");
           await init();
-          console.debug("[editor] initEditor done");
           if (hint) hint.textContent = "";
         } else {
           if (hint) hint.textContent = "editor.js: init 함수를 찾을 수 없습니다.";
@@ -198,16 +177,15 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
     async function requireAuth(){
       const lock = $("#lock");
-      const input= $("#key");
-      const btn  = $("#signin");
+      const input = $("#key");
+      const btn = $("#signin");
       const hint = $("#lock-hint");
 
       // 자동 시도
       const existing = getToken();
       if (await checkKey(existing)) {
-        console.debug("[editor] authed via existing token");
         if (lock) lock.style.display = "none";
-        document.body.classList.add("authed"); // <- 메뉴 보이게
+        document.body.classList.add("authed");
         await bootEditor();
         return;
       }
@@ -215,23 +193,26 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       // 수동 로그인
       if (lock) lock.style.display = "";
       document.body.classList.remove("authed");
+
       async function submit(){
-        const tok = (input && (input as HTMLInputElement).value) ? String((input as HTMLInputElement).value).trim() : "";
+        const tok = input && input.value ? String(input.value).trim() : "";
         if (!tok) { if (hint) hint.textContent = "비밀번호를 입력하세요."; return; }
         if (hint) hint.textContent = "확인 중…";
-        if (await checkKey(tok)){
+        const ok = await checkKey(tok);
+        if (ok){
           setToken(tok);
           if (hint) hint.textContent = "";
           if (lock) lock.style.display = "none";
-          document.body.classList.add("authed"); // <- 메뉴 보이게
+          document.body.classList.add("authed");
           await bootEditor();
         } else {
           if (hint) hint.textContent = "비밀번호가 올바르지 않습니다.";
-          (input as HTMLInputElement)?.select?.();
+          if (input && input.select) input.select();
         }
       }
-      btn?.addEventListener("click", (e)=>{ e.preventDefault(); submit(); });
-      input?.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
+
+      if (btn) btn.addEventListener("click", function(e){ e.preventDefault(); submit(); });
+      if (input) input.addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
     }
 
     window.addEventListener("DOMContentLoaded", requireAuth);
@@ -247,54 +228,59 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       const mq=window.matchMedia('(max-width: 900px)'); const isM=()=>mq.matches;
       function open(){ document.body.classList.add('side-open'); btn.setAttribute('aria-expanded','true'); if(isM()) document.body.classList.add('no-scroll'); }
       function close(){ document.body.classList.remove('side-open','no-scroll'); btn.setAttribute('aria-expanded','false'); }
-      btn.addEventListener('click',(e)=>{ e.preventDefault(); document.body.classList.contains('side-open')?close():open(); });
+      btn.addEventListener('click',function(e){ e.preventDefault(); document.body.classList.contains('side-open')?close():open(); });
       bd.addEventListener('click', close);
-      document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close(); });
-      side.addEventListener('click',(e)=>{ const t=e.target; const row=t && (t as HTMLElement).closest ? (t as HTMLElement).closest('.virtual-row') : null; if(row && isM()) setTimeout(close,0); });
-      mq.addEventListener?.('change',()=>{ if(!isM()) close(); });
-      window.addEventListener('resize',()=>{ if(!isM()) close(); });
+      document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
+      side.addEventListener('click',function(e){ var t=e.target; var row=t && t.closest ? t.closest('.virtual-row') : null; if(row && isM()) setTimeout(close,0); });
+      if (mq.addEventListener) mq.addEventListener('change',function(){ if(!isM()) close(); });
+      window.addEventListener('resize',function(){ if(!isM()) close(); });
     })();
   </script>
 
   <!-- 이미지 업로드 → 본문 삽입 -->
   <script type="module">
-    function token(){ try{const t=localStorage.getItem("editor_token"); if(t) return t;}catch{} const m=document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/); return m?decodeURIComponent(m[1]):""; }
+    function token(){
+      try{ const t=localStorage.getItem("editor_token"); if(t) return t; }catch{}
+      const m=document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/);
+      return m?decodeURIComponent(m[1]):"";
+    }
     async function uploadImage(file){
       const t = token();
       if (!t) throw new Error("에디터 토큰이 없습니다. 먼저 로그인하세요.");
       const fd = new FormData(); fd.set("file", file);
       const r = await fetch("/api/upload", { method:"POST", body:fd, headers:{ "x-editor-token": t }});
-      const j = await r.json().catch(()=>({})); if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed"); return j.url;
+      const j = await r.json().catch(function(){ return {}; });
+      if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed"); return j.url;
     }
     function insertAtCursor(ta, text){
-      const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
-      const e = ta.selectionEnd   != null ? ta.selectionEnd   : ta.value.length;
-      const before=ta.value.slice(0,s), after=ta.value.slice(e);
+      var s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      var e = ta.selectionEnd   != null ? ta.selectionEnd   : ta.value.length;
+      var before=ta.value.slice(0,s), after=ta.value.slice(e);
       ta.value = before + text + after;
-      const pos = s + text.length;
-      ta.setSelectionRange && ta.setSelectionRange(pos,pos);
+      var pos = s + text.length;
+      if (ta.setSelectionRange) ta.setSelectionRange(pos,pos);
       ta.dispatchEvent(new Event("input",{bubbles:true}));
     }
     window.addEventListener("DOMContentLoaded", function(){
-      const btn=document.getElementById("attachBtn") as HTMLButtonElement | null;
-      const input=document.getElementById("attach") as HTMLInputElement | null;
-      const ta=document.getElementById("md") as HTMLTextAreaElement | null;
-      const hint=document.getElementById("hint");
+      var btn=document.getElementById("attachBtn");
+      var input=document.getElementById("attach");
+      var ta=document.getElementById("md");
+      var hint=document.getElementById("hint");
       if (!btn||!input||!ta) return;
-      btn.addEventListener("click", ()=>{ input && (input as any).click && (input as any).click(); });
-      input.addEventListener("change", async ()=>{
-        const files = input.files ? Array.from(input.files) : [];
+      btn.addEventListener("click", function(){ if (input && input.click) input.click(); });
+      input.addEventListener("change", async function(){
+        var files = input.files ? Array.prototype.slice.call(input.files) : [];
         if (!files.length) return;
         try {
-          const urls=[]; for (let i=0;i<files.length;i++){ urls.push(await uploadImage(files[i])); }
-          insertAtCursor(ta, urls.map(u => "![](" + u + ")").join("\\n\\n"));
+          var urls=[]; for (var i=0;i<files.length;i++){ urls.push(await uploadImage(files[i])); }
+          insertAtCursor(ta, urls.map(function(u){ return "![](" + u + ")"; }).join("\\n\\n"));
           if (hint) hint.textContent = "이미지 " + urls.length + "개 첨부됨.";
         } catch(e){
-          if (hint) hint.textContent = "이미지 업로드 실패: " + (e && (e as any).message ? (e as any).message : String(e));
+          if (hint) hint.textContent = "이미지 업로드 실패: " + (e && e.message ? e.message : String(e));
           console.error(e);
         } finally {
           input.value = "";
-          setTimeout(()=>{ if (hint) hint.textContent=""; }, 4000);
+          setTimeout(function(){ if (hint) hint.textContent=""; }, 4000);
         }
       });
     });
