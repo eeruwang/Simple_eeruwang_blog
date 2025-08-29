@@ -1,177 +1,359 @@
-// public/assets/editor.js
-/* Tiny Editor helper (plain JS, no build)
-   - Keeps editor token in localStorage
-   - Adds 'x-editor-token' header to API calls
-   - Exposes window.Editor { request, getToken, setToken, login, logout, ping, preview }
-   - Optional UI hooks:
-     * [data-editor="status"]  → shows auth status
-     * [data-editor="login"]   → click to set token (prompt)
-     * [data-editor="logout"]  → click to clear token
-     * #editorBody (textarea)  → 자동 프리뷰(존재 시)
-     * #preview (div)          → 프리뷰 타깃
-   - UX: backdrop click + ESC → body.side-open 해제
+/* public/assets/editor.js
+   - ESM: export async function initEditor()
+   - 로그인 성공 후 lib/pages/editor.ts에서 동적 import로 호출됨
 */
-(() => {
-  const LS_KEY = "x-editor-token";
 
-  // ── Token helpers ──
-  const getToken = () => localStorage.getItem(LS_KEY) || "";
-  const setToken = (tok) => {
-    if (tok) localStorage.setItem(LS_KEY, tok);
-    else localStorage.removeItem(LS_KEY);
-    updateLoginIndicator();
+export async function initEditor() {
+  const $ = (s) => document.querySelector(s);
+
+  // ----- 상태 -----
+  let state = {
+    id: null,
+    slug: "",
+    is_page: false,
+    published: false,
   };
 
-  // ── API helper ──
-  async function request(method, path, body) {
-    const headers = { "x-editor-token": getToken() };
-    let payload = body;
-
-    if (body instanceof FormData) {
-      // leave as-is (browser sets content-type)
-    } else if (body && typeof body === "object") {
-      headers["content-type"] = "application/json";
-      payload = JSON.stringify(body);
-    } else if (typeof body === "string") {
-      // text payload
-    } else {
-      payload = undefined;
-    }
-
-    const res = await fetch(path, { method, headers, body: payload });
-    const text = await res.text();
-    let parsed;
-    try { parsed = JSON.parse(text); } catch {}
-    return { ok: res.ok, status: res.status, json: parsed, text };
+  // ----- 토큰 / fetch 유틸 -----
+  function getToken() {
+    try { const t = localStorage.getItem("editor_token"); if (t) return t; } catch {}
+    const m = document.cookie.match(/(?:^|;\s*)editor_token=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
   }
-
-  // ── Preview (markdown → safe HTML via server) ──
-  async function preview(md, targetSelector = "#preview") {
-    const token = getToken();
-    const r = await fetch("/api/posts/preview", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-editor-token": token
-      },
-      body: JSON.stringify({ md: String(md || "") })
+  function authHeaders(h = {}) {
+    const tok = getToken();
+    return tok ? { ...h, "x-editor-token": tok } : h;
+  }
+  async function apiGet(url) {
+    const r = await fetch(url, { headers: authHeaders() });
+    const j = await r.json().catch(()=> ({}));
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    return j;
+  }
+  async function apiSend(url, method, body) {
+    const r = await fetch(url, {
+      method,
+      headers: authHeaders({ "content-type": "application/json" }),
+      body: body ? JSON.stringify(body) : undefined,
     });
-
-    const el = document.querySelector(targetSelector);
-    const j = await r.json().catch(() => ({}));
-
-    if (!el) return { ok: false, html: "", status: r.status || 0 };
-
-    if (r.ok && j && typeof j.html === "string") {
-      // 서버에서 markdown-it + sanitize를 거친 안전한 HTML
-      el.innerHTML = j.html;
-      return { ok: true, html: j.html, status: r.status };
-    } else {
-      el.textContent = (j && j.error) || "Preview failed";
-      return { ok: false, html: "", status: r.status };
-    }
+    const j = await r.json().catch(()=> ({}));
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    return j;
   }
 
-  // ── UI: auth status indicator (optional) ──
-  function updateLoginIndicator() {
-    const el = document.querySelector('[data-editor="status"]');
-    if (!el) return;
+  // ----- DOM -----
+  const el = {
+    list: $("#postVirtualList"),
+    search: $("#searchInput"),
+    filter: $("#filterSelect"),
+    title: $("#title"),
+    slug: $("#slug"),
+    tags: $("#tags"),
+    excerpt: $("#excerpt"),
+    isPage: $("#is_page"),
+    pubdate: $("#pubdate"),
+    pubtime: $("#pubtime"),
+    publishedToggle: $("#publishedToggle"),
+    permalink: $("#permalink"),
+    status: $("#status"),
+    previewBtn: $("#previewToggleBtn"),
+    previewPane: $("#previewPane"),
+    previewFrame: $("#previewFrame"),
+    md: $("#md"),
+    btnNew: $("#new"),
+    btnSave: $("#save"),
+    btnPublish: $("#publish"),
+    btnDelete: $("#delete"),
+    hint: $("#hint"),
+  };
 
-    const token = getToken();
-    if (!token) {
-      el.textContent = "🔒 Locked";
-      el.dataset.state = "locked";
-      return;
-    }
-
-    el.textContent = "🔑 Checking…";
-    el.dataset.state = "checking";
-    fetch("/api/check-key", { headers: { "x-editor-token": token } })
-      .then((r) => {
-        if (r.ok) {
-          el.textContent = "✅ Authorized";
-          el.dataset.state = "ok";
-        } else {
-          el.textContent = "❌ Invalid token";
-          el.dataset.state = "invalid";
-        }
-      })
-      .catch(() => {
-        el.textContent = "⚠️ Network error";
-        el.dataset.state = "error";
-      });
-  }
-
-  // ── optional: prompt once if missing ──
-  async function ensureTokenInteractive() {
-    if (getToken()) return;
-    const t = window.prompt("Enter editor password");
-    if (t && t.trim()) setToken(t.trim());
-  }
-
-  // ── Side panel helpers ──
-  function setupSidePanelHelpers() {
-    const backdrop = document.getElementById("sideBackdrop");
-    if (backdrop) backdrop.addEventListener("click", () => {
-      document.body.classList.remove("side-open");
+  // ----- EasyMDE -----
+  let mde = null;
+  function ensureEditor() {
+    if (mde) return mde;
+    // EasyMDE 전역이 로드되어 있음 (head에 CDN)
+    mde = new window.EasyMDE({
+      element: el.md,
+      autofocus: false,
+      spellChecker: false,
+      autosave: { enabled: false },
+      status: false,
+      minHeight: "300px",
+      placeholder: "Write in Markdown…",
     });
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") document.body.classList.remove("side-open");
+    // 에디터 변경 시 슬러그/퍼머링크 등 UI 업데이트
+    mde.codemirror.on("change", () => {
+      // no-op
     });
+    return mde;
   }
 
-  // ── Optional button wiring ──
-  function wireButtons() {
-    document.querySelectorAll('[data-editor="login"]').forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const t = window.prompt("Enter editor password");
-        if (t && t.trim()) setToken(t.trim());
-      });
-    });
-    document.querySelectorAll('[data-editor="logout"]').forEach((btn) => {
-      btn.addEventListener("click", () => setToken(""));
-    });
+  // ----- 헬퍼 -----
+  function setHint(msg, ms = 2500) {
+    if (!el.hint) return;
+    el.hint.textContent = msg || "";
+    if (msg) setTimeout(() => { if (el.hint.textContent === msg) el.hint.textContent = ""; }, ms);
   }
 
-  // ── Auto preview wiring (선택: 요소가 있으면 자동 활성화) ──
-  function wireAutoPreview() {
-    const input = document.getElementById("editorBody"); // textarea id=editorBody 권장
-    const targetSel = "#preview";
-    if (!input || !document.querySelector(targetSel)) return;
+  function slugify(s) {
+    const base = String(s || "").trim();
+    const roman = typeof window.__romanize === "function" ? window.__romanize(base) : base;
+    return roman
+      .toLowerCase()
+      .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-{2,}/g, "-")
+      || "post";
+  }
 
-    let t;
-    const run = () => preview(input.value, targetSel);
-    const debounced = () => {
-      clearTimeout(t);
-      t = setTimeout(run, 250);
+  function readTagsInput(val) {
+    if (Array.isArray(val)) return val.map(String);
+    return String(val || "")
+      .split(",")
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  function updatePermalink(slug) {
+    if (el.permalink) el.permalink.textContent = `Permalink: /post/${encodeURIComponent(slug || "")}`;
+  }
+
+  function getPublishAtFromInputs() {
+    const d = (el.pubdate && el.pubdate.value) ? el.pubdate.value : "";
+    const t = (el.pubtime && el.pubtime.value) ? el.pubtime.value : "";
+    if (!d && !t) return null;
+    const iso = d ? (t ? `${d}T${t}:00` : `${d}T00:00:00`) : new Date().toISOString();
+    return iso;
+  }
+
+  function selectRowInList(id) {
+    if (!el.list) return;
+    el.list.querySelectorAll(".virtual-row").forEach(x => x.classList.remove("active"));
+    const row = el.list.querySelector(`.virtual-row[data-id="${id}"]`);
+    if (row) row.classList.add("active");
+  }
+
+  function useRecord(rec) {
+    state = {
+      id: rec?.id ?? null,
+      slug: rec?.slug || "",
+      is_page: !!rec?.is_page,
+      published: !!rec?.published,
     };
-    input.addEventListener("input", debounced);
-    // 초기 1회
-    run();
+    if (el.title) el.title.value = rec?.title || "";
+    if (el.slug)  el.slug.value  = rec?.slug || "";
+    if (el.tags)  el.tags.value  = (rec?.tags || []).join(", ");
+    if (el.excerpt) el.excerpt.value = rec?.excerpt || "";
+    if (el.isPage)  el.isPage.checked = !!rec?.is_page;
+    if (el.publishedToggle) el.publishedToggle.checked = !!rec?.published;
+    if (el.status) el.status.textContent = (!!rec?.published ? "published" : "draft");
+    updatePermalink(rec?.slug || "");
+
+    if (rec?.published_at && el.pubdate && el.pubtime) {
+      const dt = new Date(rec.published_at);
+      const pad = (n) => String(n).padStart(2, "0");
+      el.pubdate.value = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+      el.pubtime.value = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    } else {
+      if (el.pubdate) el.pubdate.value = "";
+      if (el.pubtime) el.pubtime.value = "";
+    }
+
+    ensureEditor().value(rec?.body_md || "");
+    selectRowInList(rec?.id);
   }
 
-  // ── Public API ──
-  window.Editor = {
-    request,
-    getToken,
-    setToken,
-    preview,
-    async login() {
-      const t = window.prompt("Enter editor password");
-      if (t && t.trim()) setToken(t.trim());
-    },
-    logout() { setToken(""); },
-    async ping() {
-      try { const r = await fetch("/api/ping"); return r.ok; }
-      catch { return false; }
-    },
-  };
+  // ----- 목록 -----
+  let lastList = [];
+  async function loadList() {
+    const j = await apiGet(`/api/posts?limit=1000&offset=0`);
+    lastList = Array.isArray(j.list) ? j.list : [];
+    renderList();
+  }
 
-  // ── Boot ──
-  document.addEventListener("DOMContentLoaded", () => {
-    setupSidePanelHelpers();
-    wireButtons();
-    wireAutoPreview();
-    ensureTokenInteractive().finally(updateLoginIndicator);
+  function renderList() {
+    if (!el.list) return;
+    const q = (el.search && el.search.value ? el.search.value : "").toLowerCase();
+    const filter = el.filter ? el.filter.value : "all";
+
+    const filtered = lastList.filter((r) => {
+      if (filter === "published" && !r.published) return false;
+      if (filter === "draft" && r.published) return false;
+      if (filter === "page" && !r.is_page) return false;
+      if (filter === "post" && r.is_page) return false;
+      if (!q) return true;
+      const hay = `${r.title || ""} ${(r.tags || []).join(" ")}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    el.list.innerHTML = filtered.map(r => {
+      const dateStr = r.published_at || r.updated_at || r.created_at || "";
+      return `<div class="virtual-row" role="option" data-id="${r.id}" aria-selected="false" tabindex="0">
+        <div class="row" style="gap:8px;align-items:center">
+          <strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.title || "(untitled)")}</strong>
+          <span style="font-size:12px;opacity:.7">${escapeHtml((r.slug || ""))}</span>
+        </div>
+        <div class="meta" style="font-size:12px;opacity:.7">${escapeHtml(dateStr)}</div>
+      </div>`;
+    }).join("");
+
+    // 바인딩
+    el.list.querySelectorAll(".virtual-row").forEach((row) => {
+      row.addEventListener("click", async () => {
+        const id = Number(row.getAttribute("data-id") || "0");
+        if (!id) return;
+        try {
+          const rec = await apiGet(`/api/posts/${id}`);
+          useRecord(rec);
+        } catch (e) {
+          console.error(e);
+          setHint("항목 로드 실패");
+        }
+      });
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); }
+      });
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+
+  // ----- 액션: New / Save / Publish / Delete -----
+  function readForm() {
+    const title = el.title ? el.title.value : "";
+    const slugIn = el.slug ? el.slug.value : "";
+    const slug = (slugIn || slugify(title)).trim();
+    const tags = readTagsInput(el.tags ? el.tags.value : "");
+    const excerpt = el.excerpt ? el.excerpt.value : "";
+    const is_page = el.isPage ? !!el.isPage.checked : false;
+    const published = el.publishedToggle ? !!el.publishedToggle.checked : false;
+    const body_md = ensureEditor().value();
+    return { title, slug, tags, excerpt, is_page, published, body_md };
+  }
+
+  async function actionNew() {
+    useRecord({
+      id: null,
+      title: "",
+      slug: "",
+      tags: [],
+      excerpt: "",
+      is_page: false,
+      published: false,
+      body_md: "",
+    });
+    setHint("새 글");
+  }
+
+  async function actionSaveDraft() {
+    const data = readForm();
+    data.published = false;
+    // draft는 published_at 비움
+    const payload = { ...data, published_at: null };
+
+    let rec;
+    if (state.id) {
+      rec = await apiSend(`/api/posts/${state.id}`, "PATCH", payload);
+      setHint("임시저장 완료");
+    } else {
+      const j = await apiSend(`/api/posts`, "POST", payload);
+      rec = j && j.created ? j.created[0] : null;
+      setHint("초안 생성 완료");
+    }
+    await loadList();
+    if (rec && rec.id) {
+      const full = await apiGet(`/api/posts/${rec.id}`);
+      useRecord(full);
+    }
+  }
+
+  async function actionPublish() {
+    const data = readForm();
+    data.published = true;
+    const published_at = getPublishAtFromInputs();
+
+    let rec;
+    if (state.id) {
+      rec = await apiSend(`/api/posts/${state.id}`, "PATCH", { ...data, published_at });
+      setHint("발행 완료");
+    } else {
+      const j = await apiSend(`/api/posts`, "POST", { ...data, published_at });
+      rec = j && j.created ? j.created[0] : null;
+      setHint("발행 완료");
+    }
+    await loadList();
+    if (rec && rec.id) {
+      const full = await apiGet(`/api/posts/${rec.id}`);
+      useRecord(full);
+    }
+  }
+
+  async function actionDelete() {
+    if (!state.id) { setHint("삭제할 항목이 없습니다."); return; }
+    if (!confirm("정말 삭제할까요?")) return;
+    await apiSend(`/api/posts/${state.id}`, "DELETE");
+    setHint("삭제 완료");
+    await loadList();
+    await actionNew();
+  }
+
+  // ----- 프리뷰 -----
+  async function updatePreview() {
+    if (!el.previewFrame) return;
+    const md = ensureEditor().value();
+    try {
+      const j = await apiSend("/api/posts/preview", "POST", { md });
+      const html = (j && j.html) ? j.html : "<p>(preview failed)</p>";
+      el.previewFrame.srcdoc = `
+        <!doctype html><meta charset="utf-8">
+        <link rel="stylesheet" href="/assets/style.css">
+        <article class="post">${html}</article>`;
+    } catch (e) {
+      el.previewFrame.srcdoc = `<p style="color:#c00">미리보기 실패: ${escapeHtml(e.message || String(e))}</p>`;
+    }
+  }
+
+  function togglePreview() {
+    if (!el.previewPane || !el.previewBtn) return;
+    const on = el.previewPane.hasAttribute("hidden");
+    if (on) {
+      el.previewPane.removeAttribute("hidden");
+      el.previewBtn.setAttribute("aria-pressed", "true");
+      updatePreview();
+    } else {
+      el.previewPane.setAttribute("hidden", "");
+      el.previewBtn.setAttribute("aria-pressed", "false");
+    }
+  }
+
+  // ----- 바인딩 -----
+  el.btnNew?.addEventListener("click", (e)=>{ e.preventDefault(); actionNew().catch(console.error); });
+  el.btnSave?.addEventListener("click", (e)=>{ e.preventDefault(); actionSaveDraft().catch(err => { console.error(err); setHint("저장 실패"); }); });
+  el.btnPublish?.addEventListener("click", (e)=>{ e.preventDefault(); actionPublish().catch(err => { console.error(err); setHint("발행 실패"); }); });
+  el.btnDelete?.addEventListener("click", (e)=>{ e.preventDefault(); actionDelete().catch(err => { console.error(err); setHint("삭제 실패"); }); });
+  el.previewBtn?.addEventListener("click", (e)=>{ e.preventDefault(); togglePreview(); });
+
+  el.title?.addEventListener("input", () => {
+    if (!state.id) {
+      const s = slugify(el.title.value);
+      if (el.slug) el.slug.value = s;
+      updatePermalink(s);
+    }
   });
-})();
+  el.slug?.addEventListener("input", () => updatePermalink(el.slug.value));
+  el.publishedToggle?.addEventListener("change", () => {
+    if (el.status) el.status.textContent = el.publishedToggle.checked ? "published" : "draft";
+  });
+  el.search?.addEventListener("input", renderList);
+  el.filter?.addEventListener("change", renderList);
+
+  // ----- 초기 부팅 -----
+  ensureEditor();
+  await loadList();
+  await actionNew(); // 새 글 상태로 시작
+  setHint("에디터 준비됨");
+}
