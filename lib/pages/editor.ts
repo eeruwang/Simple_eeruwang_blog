@@ -4,7 +4,7 @@
 export type EditorPageOptions = { version?: string };
 
 export function renderEditorHTML(opts: EditorPageOptions = {}): string {
-  const ver = opts.version || "v8";
+  const ver = opts.version || "v12"; // ← 캐시 버스터 최신값 권장
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -15,17 +15,14 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
 <link rel="stylesheet" href="/assets/style.css">
 <style>
-  /* 로그인 전엔 .auth-only 숨김 */
   .auth-only { display:none }
   .authed .auth-only { display:inline-flex }
 
-  /* 로그인 오버레이 */
   #lock{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1000}
   #lock .panel{background:#fff;padding:16px 18px;border-radius:10px;min-width:280px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
   #lock .row{display:flex;gap:8px}
   #lock .hint{margin-top:8px;font-size:12px;opacity:.8}
 
-  /* 폴백: 에디터 초기화 실패해도 textarea는 보이게 */
   #md{display:block; min-height:320px}
 </style>
 </head>
@@ -128,6 +125,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
+  <!-- EasyMDE (전역) -->
   <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 
   <!-- 로마자 모듈 프리로드 -->
@@ -166,18 +164,14 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       } catch { return false; }
     }
 
-    // ✅ 로그인 성공 후 editor.js를 "동적 import" 해서 초기화
+    // 로그인 성공 후 editor.js를 동적 import → initEditor() 실행
     let __booted = false;
     async function bootEditor(){
       if (__booted) return; __booted = true;
       const hint = $("#hint");
       try {
-        // /assets/editor.js가 ESM을 export하는 경우
         const mod = await import("/assets/editor.js?v=${ver}");
-        const init =
-          (mod && (mod.initEditor || mod.default)) ||
-          // UMD/전역 방식도 호환
-          (window.initEditor || (window.EditorApp && window.EditorApp.init));
+        const init = mod && (mod.initEditor || mod.default) || (window.initEditor || (window.EditorApp && window.EditorApp.init));
         if (typeof init === "function") {
           await init();
           if (hint) hint.textContent = "";
@@ -210,7 +204,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       if (lock) lock.style.display = "";
       document.body.classList.remove("authed");
       async function submit(){
-        const tok = (input && input.value) ? String(input.value).trim() : "";
+        const tok = (input && (input as HTMLInputElement).value) ? String((input as HTMLInputElement).value).trim() : "";
         if (!tok) { if (hint) hint.textContent = "비밀번호를 입력하세요."; return; }
         if (hint) hint.textContent = "확인 중…";
         const ok = await checkKey(tok);
@@ -222,11 +216,11 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
           await bootEditor();
         } else {
           if (hint) hint.textContent = "비밀번호가 올바르지 않습니다.";
-          if (input && input.select) input.select();
+          (input as HTMLInputElement)?.select?.();
         }
       }
-      if (btn) btn.addEventListener("click", (e)=>{ e.preventDefault(); submit(); });
-      if (input) input.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
+      btn?.addEventListener("click", (e)=>{ e.preventDefault(); submit(); });
+      input?.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
     }
 
     window.addEventListener("DOMContentLoaded", requireAuth);
@@ -245,7 +239,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       btn.addEventListener('click',(e)=>{ e.preventDefault(); document.body.classList.contains('side-open')?close():open(); });
       bd.addEventListener('click', close);
       document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close(); });
-      side.addEventListener('click',(e)=>{ const row=e.target&&e.target.closest?e.target.closest('.virtual-row'):null; if(row&&isM()) setTimeout(close,0); });
+      side.addEventListener('click',(e)=>{ const t=e.target; const row=t && (t as HTMLElement).closest ? (t as HTMLElement).closest('.virtual-row') : null; if(row && isM()) setTimeout(close,0); });
       mq.addEventListener?.('change',()=>{ if(!isM()) close(); });
       window.addEventListener('resize',()=>{ if(!isM()) close(); });
     })();
@@ -271,12 +265,12 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       ta.dispatchEvent(new Event("input",{bubbles:true}));
     }
     window.addEventListener("DOMContentLoaded", function(){
-      const btn=document.getElementById("attachBtn");
-      const input=document.getElementById("attach");
-      const ta=document.getElementById("md");
+      const btn=document.getElementById("attachBtn") as HTMLButtonElement | null;
+      const input=document.getElementById("attach") as HTMLInputElement | null;
+      const ta=document.getElementById("md") as HTMLTextAreaElement | null;
       const hint=document.getElementById("hint");
       if (!btn||!input||!ta) return;
-      btn.addEventListener("click", ()=>{ input && input.click && input.click(); });
+      btn.addEventListener("click", ()=>{ input && (input as any).click && (input as any).click(); });
       input.addEventListener("change", async ()=>{
         const files = input.files ? Array.from(input.files) : [];
         if (!files.length) return;
@@ -285,7 +279,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
           insertAtCursor(ta, urls.map(u => "![](" + u + ")").join("\\n\\n"));
           if (hint) hint.textContent = "이미지 " + urls.length + "개 첨부됨.";
         } catch(e){
-          if (hint) hint.textContent = "이미지 업로드 실패: " + (e && e.message ? e.message : String(e));
+          if (hint) hint.textContent = "이미지 업로드 실패: " + (e && (e as any).message ? (e as any).message : String(e));
           console.error(e);
         } finally {
           input.value = "";

@@ -1,11 +1,13 @@
-/* public/assets/editor.js — Full editor app (ESM, robust)
-   - 로그인 성공 후 동적 import → initEditor() 실행
-   - EasyMDE 로드 대기, API 에러 힌트 표시
+/* public/assets/editor.js — Full editor app (ESM)
+   - export async function initEditor()
+   - EasyMDE(CDN) 로드 대기 → 초기화
+   - 목록 로드/검색/필터, 생성/저장/발행/삭제, 미리보기
 */
+
 export async function initEditor() {
   const $ = (s) => document.querySelector(s);
 
-  // ----- Token / API -----
+  // ---------- Token / API ----------
   function getToken() {
     try {
       const t1 = localStorage.getItem("editor_token"); if (t1) return t1;
@@ -21,7 +23,7 @@ export async function initEditor() {
   async function apiGet(url) {
     const r = await fetch(url, { headers: authHeaders() });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.statusText);
+    if (!r.ok) throw new Error(j.error || r.statusText || `GET ${url} failed`);
     return j;
   }
   async function apiSend(url, method, body) {
@@ -31,11 +33,11 @@ export async function initEditor() {
       body: body ? JSON.stringify(body) : undefined,
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.statusText);
+    if (!r.ok) throw new Error(j.error || r.statusText || `${method} ${url} failed`);
     return j;
   }
 
-  // ----- DOM refs -----
+  // ---------- DOM ----------
   const el = {
     list: $("#postVirtualList"),
     search: $("#searchInput"),
@@ -61,7 +63,7 @@ export async function initEditor() {
     hint: $("#hint"),
   };
 
-  // ----- Hint / utils -----
+  // ---------- Utils ----------
   function setHint(msg, ms = 3000) {
     if (!el.hint) return;
     el.hint.textContent = msg || "";
@@ -69,8 +71,8 @@ export async function initEditor() {
   }
   function escapeHtml(s) {
     return String(s || "")
-      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
   function slugify(s) {
     const base = String(s || "").trim();
@@ -100,18 +102,19 @@ export async function initEditor() {
     if (row) row.classList.add("active");
   }
 
-  // ----- EasyMDE: wait until loaded -----
+  // ---------- EasyMDE: wait until loaded ----------
+  async function waitForEasyMDE(timeoutMs = 8000) {
+    const t0 = Date.now();
+    while (!window.EasyMDE) {
+      await new Promise(r => setTimeout(r, 50));
+      if (Date.now() - t0 > timeoutMs) throw new Error("EasyMDE가 로드되지 않았습니다.");
+    }
+  }
+
   let mde = null;
   function getEditor() {
     if (!mde) throw new Error("editor not ready");
     return mde;
-  }
-  async function waitForEasyMDE(timeoutMs = 5000) {
-    const start = Date.now();
-    while (!window.EasyMDE) {
-      await new Promise(r => setTimeout(r, 50));
-      if (Date.now() - start > timeoutMs) throw new Error("EasyMDE가 로드되지 않았습니다.");
-    }
   }
   async function ensureEditorReady() {
     if (mde) return mde;
@@ -128,7 +131,7 @@ export async function initEditor() {
     return mde;
   }
 
-  // ----- State -----
+  // ---------- State ----------
   let state = { id: null, slug: "", is_page: false, published: false };
 
   function useRecord(rec) {
@@ -149,7 +152,7 @@ export async function initEditor() {
 
     if (rec?.published_at && el.pubdate && el.pubtime) {
       const dt = new Date(rec.published_at);
-      const pad = (n) => String(n).padStart(2,"0");
+      const pad = (n) => String(n).padStart(2, "0");
       el.pubdate.value = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
       el.pubtime.value = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     } else {
@@ -161,7 +164,7 @@ export async function initEditor() {
     selectRowInList(rec?.id);
   }
 
-  // ----- List -----
+  // ---------- List ----------
   let lastList = [];
   async function loadList() {
     try {
@@ -174,10 +177,12 @@ export async function initEditor() {
     }
     renderList();
   }
+
   function renderList() {
     if (!el.list) return;
     const q = (el.search && el.search.value ? el.search.value : "").toLowerCase();
     const filter = el.filter ? el.filter.value : "all";
+
     const filtered = lastList.filter((r) => {
       if (filter === "published" && !r.published) return false;
       if (filter === "draft" && r.published) return false;
@@ -217,7 +222,7 @@ export async function initEditor() {
     });
   }
 
-  // ----- Actions -----
+  // ---------- Actions ----------
   function readForm() {
     const title = el.title ? el.title.value : "";
     const slugIn = el.slug ? el.slug.value : "";
@@ -295,7 +300,7 @@ export async function initEditor() {
     }
   }
 
-  // ----- Preview -----
+  // ---------- Preview ----------
   async function updatePreview() {
     if (!el.previewFrame) return;
     const md = getEditor().value();
@@ -322,7 +327,7 @@ export async function initEditor() {
     }
   }
 
-  // ----- Bindings -----
+  // ---------- Bindings ----------
   el.btnNew?.addEventListener("click", (e)=>{ e.preventDefault(); actionNew(); });
   el.btnSave?.addEventListener("click", (e)=>{ e.preventDefault(); actionSaveDraft(); });
   el.btnPublish?.addEventListener("click", (e)=>{ e.preventDefault(); actionPublish(); });
@@ -343,15 +348,15 @@ export async function initEditor() {
   el.search?.addEventListener("input", () => renderList());
   el.filter?.addEventListener("change", () => renderList());
 
-  // ----- Boot -----
+  // ---------- Boot ----------
   try {
-    await ensureEditorReady();     // ✅ EasyMDE가 올 때까지 대기
+    await ensureEditorReady(); // ✅ EasyMDE까지 대기
   } catch (e) {
     console.error(e);
     setHint(String(e.message || e));
-    // 에디터 없이도 나머지 UI는 보이게만 함
+    // 이어서 UI는 표시 (textarea 폴백)
   }
-  await loadList();               // 실패해도 UI는 그려짐(빈 목록)
+  await loadList();  // 실패해도 빈 목록으로 진행
   await actionNew();
   setHint("에디터 준비됨");
 }
