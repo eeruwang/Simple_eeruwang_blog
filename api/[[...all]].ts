@@ -1,6 +1,8 @@
 // api/[[...all]].ts
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+export const config = { runtime: "nodejs" };
 
+import { put } from "@vercel/blob";
 import { renderIndex } from "../routes/public/index.js";
 import { renderPost } from "../routes/public/post.js";
 import { renderPage } from "../routes/public/page.js";
@@ -8,16 +10,16 @@ import { renderTag } from "../routes/public/tag.js";
 import { renderRSS } from "../routes/public/rss.js";
 import { renderEditorHTML } from "../lib/pages/editor.js";
 import { handleEditorApi } from "../lib/api/editor.js";
+import { pingDb } from "../lib/db/db.js";
 
-/* Env 타입(선택) */
+/* Env 타입(간소화) */
 type Env = {
   EDITOR_PASSWORD?: string;
-  NOCO_BASE_URL?: string;
-  NOCO_TABLE_ID?: string;
-  NOCO_TOKEN?: string;
   SITE_URL?: string;
   [k: string]: unknown;
 };
+
+const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 function getEditorTokenFromHeaders(req: VercelRequest): string {
   // x-editor-token / x-editor-key 둘 다 허용
@@ -136,7 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(204).end();
     }
 
-    // 2) (선택) Noco 진단
+    // 2) DB 진단
     if (path === "/api/diag" && req.method === "GET") {
       const tok = getEditorTokenFromHeaders(req);
       if (!tok || tok !== env.EDITOR_PASSWORD) {
@@ -144,32 +146,73 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         setSecurityHeadersVercel(res);
         return res.status(401).json({ error: "Unauthorized" });
       }
-      const base = (env.NOCO_BASE_URL || "").replace(/\/+$/, "");
-      const table = env.NOCO_TABLE_ID;
-      const token = env.NOCO_TOKEN;
-      if (!base || !table || !token) {
-        setSecurityHeadersVercel(res);
-        return res
-          .status(404)
-          .json({ ok: false, hint: "Noco bindings missing (migrate 완료시 삭제 권장)" });
-      }
       try {
-        const r = await fetch(`${base}/api/v2/tables/${table}/records?limit=1`, {
-          headers: { "xc-token": token, accept: "application/json" },
-        });
-        const text = await r.text();
+        const info = await pingDb();
         setSecurityHeadersVercel(res);
-        return res.status(r.ok ? 200 : r.status).json({
-          ok: r.ok,
-          status: r.status,
-          table,
-          note: "status!=200이면 NOCO_* 변수 확인 필요",
-          preview: text.slice(0, 800),
-        });
+        return res.status(200).json({ ok: true, db: info });
       } catch (e: any) {
         setSecurityHeadersVercel(res);
-        return res.status(500).json({ ok: false, caught: String(e) });
+        return res.status(500).json({ ok: false, error: String(e) });
       }
+    }
+
+    // 2.5) 이미지 업로드 (multipart/form-data; field name: "file")
+    if (path === "/api/upload" && req.method === "POST") {
+      // 에디터 인증
+      const tok = getEditorTokenFromHeaders(req);
+      if (!tok || tok !== env.EDITOR_PASSWORD) {
+        applyEditorCors(req, res, env);
+        setSecurityHeadersVercel(res);
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      if (!BLOB_TOKEN) {
+        setSecurityHeadersVercel(res);
+        return res.status(500).json({ error: "BLOB token not set" });
+      }
+
+      // 원본 헤더 복사
+      const hdrs = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (Array.isArray(v)) hdrs.set(k, v.join(", "));
+        else if (typeof v === "string") hdrs.set(k, v);
+      }
+
+      // 스트림 바디 수집
+      const chunks: Buffer[] = [];
+      for await (const chunk of req as any) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const bodyBuf = Buffer.concat(chunks);
+
+      // WHATWG Request로 변환 → formData 파싱
+      const webReq = new Request(url.toString(), { method: "POST", headers: hdrs, body: bodyBuf });
+      const form = await webReq.formData().catch(() => null);
+      const file = form?.get("file") as unknown as File | null;
+
+      if (!file || typeof file.name !== "string") {
+        setSecurityHeadersVercel(res);
+        return res.status(400).json({ error: "No file" });
+      }
+
+      // 간단한 검증
+      if (!/^image\//i.test(file.type)) {
+        setSecurityHeadersVercel(res);
+        return res.status(415).json({ error: "Only image/* allowed" });
+      }
+      const size = (file as any).size ?? 0;
+      const MAX = 10 * 1024 * 1024; // 10MB
+      if (size > MAX) {
+        setSecurityHeadersVercel(res);
+        return res.status(413).json({ error: "File too large" });
+      }
+
+      const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(0, 120);
+      const key = `uploads/${Date.now()}-${safeName}`;
+      const blob = await put(key, file, { access: "public", token: BLOB_TOKEN });
+
+      applyEditorCors(req, res, env);
+      setSecurityHeadersVercel(res);
+      return res.status(200).json({ ok: true, url: blob.url, key, contentType: file.type, size });
     }
 
     // 3) 에디터 API 보호 라우트 (/api/…)

@@ -20,7 +20,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <link rel="stylesheet" href="/style.css">
 </head>
 <body class="editor-page">
-  <!-- 잠금 오버레이 -->
   <div id="lock">
     <div class="panel">
       <h2>Editor 로그인</h2>
@@ -32,19 +31,17 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
-  <!-- 상단 기본 헤더 -->
   <header>
     <button class="auth-only" id="new">New</button>
     <button class="auth-only" id="save">Save Draft</button>
     <button class="auth-only" id="publish">Publish</button>
     <button class="auth-only" id="delete">Delete</button>
-    <button class="auth-only" id="attachBtn">Attach</button>
-    <input id="attach" type="file" multiple style="display:none" />
+    <button class="auth-only" id="attachBtn">이미지</button>
+    <input id="attach" type="file" multiple accept="image/*" style="display:none" />
     <span id="hint" style="opacity:.8;font-size:13px;margin-left:8px"></span>
     <a href="/" style="margin-left:auto;opacity:.8" data-back>← 목록</a>
   </header>
 
-  <!-- 스티키 편집 바 -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
     <button id="sideToggle" class="only-mobile" type="button" aria-controls="postVirtualList" aria-expanded="false">☰ 목록</button>
 
@@ -67,7 +64,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <div class="wrap">
     <div class="editor-layout">
-      <!-- 좌측 목록 -->
       <aside class="editor-side side" aria-label="posts panel">
         <div class="side-head">
           <input id="searchInput" type="text" aria-label="Search posts" placeholder="제목/태그 검색…" />
@@ -75,9 +71,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
         <div id="postVirtualList" class="virtual-list" role="listbox" aria-label="posts list"></div>
       </aside>
 
-      <!-- 모바일용 백드롭 -->
       <div class="side-backdrop" id="sideBackdrop" aria-hidden="true"></div>
-
       <div class="resize-handle" aria-hidden="true"></div>
 
       <div class="editor-main">
@@ -128,19 +122,21 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <!-- 로마자 모듈 사전 로드 -->
   <script type="module">
-    try {
-      const mod = await import("https://esm.sh/korean-romanization");
-      const romanize = (mod && (mod.romanize || mod.default));
-      if (typeof romanize === "function") {
-        window.__romanize = romanize;
-        window.dispatchEvent(new CustomEvent("romanize-loaded"));
+    (async function(){
+      try {
+        const mod = await import("https://esm.sh/korean-romanization");
+        const romanize = (mod && (mod.romanize || mod.default));
+        if (typeof romanize === "function") {
+          window.__romanize = romanize;
+          window.dispatchEvent(new CustomEvent("romanize-loaded"));
+        }
+      } catch (e) {
+        console.warn("romanization preload failed", e);
       }
-    } catch (e) {
-      console.warn("romanization preload failed", e);
-    }
+    })();
   </script>
 
-  <!-- 모바일 사이드바 오버레이 토글 -->
+  <!-- 모바일 사이드바 오버레이 토글 (순수 JS) -->
   <script type="module">
     (function(){
       const side     = document.querySelector('.editor-side');
@@ -151,30 +147,93 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       const mq = window.matchMedia('(max-width: 900px)');
       const isMobile = () => mq.matches;
 
-      const openSide = () => {
+      function openSide() {
         document.body.classList.add('side-open');
         toggleBtn.setAttribute('aria-expanded', 'true');
         if (isMobile()) document.body.classList.add('no-scroll');
-      };
-      const closeSide = () => {
+      }
+      function closeSide() {
         document.body.classList.remove('side-open','no-scroll');
         toggleBtn.setAttribute('aria-expanded', 'false');
-      };
-      const toggleSide = () =>
-        (document.body.classList.contains('side-open') ? closeSide() : openSide());
+      }
+      function toggleSide() {
+        if (document.body.classList.contains('side-open')) closeSide();
+        else openSide();
+      }
 
-      toggleBtn.addEventListener('click', (e)=>{ e.preventDefault(); toggleSide(); });
+      toggleBtn.addEventListener('click', function(e){ e.preventDefault(); toggleSide(); });
       backdrop.addEventListener('click', closeSide);
-      document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeSide(); });
+      document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeSide(); });
 
-      side.addEventListener('click', (e)=>{
-        const row = (e.target as HTMLElement).closest?.('.virtual-row');
-        if (row && isMobile()) setTimeout(closeSide, 0);
+      side.addEventListener('click', function(e){
+        const t = e.target;
+        if (t && typeof t.closest === 'function') {
+          const row = t.closest('.virtual-row');
+          if (row && isMobile()) setTimeout(closeSide, 0);
+        }
       });
 
-      mq.addEventListener?.('change', () => { if (!isMobile()) closeSide(); });
-      window.addEventListener('resize', () => { if (!isMobile()) closeSide(); });
+      if (mq.addEventListener) mq.addEventListener('change', function(){ if (!isMobile()) closeSide(); });
+      window.addEventListener('resize', function(){ if (!isMobile()) closeSide(); });
     })();
+  </script>
+
+  <!-- 이미지 업로드 → 본문 삽입 (순수 JS) -->
+  <script type="module">
+    function getToken() {
+      return localStorage.getItem("editor_token") || "";
+    }
+    async function uploadImage(file) {
+      const token = getToken();
+      if (!token) throw new Error("에디터 토큰이 없습니다. 먼저 로그인하세요.");
+      const fd = new FormData();
+      fd.set("file", file);
+      const r = await fetch("/api/upload", {
+        method: "POST",
+        body: fd,
+        headers: { "x-editor-token": token }
+      });
+      const j = await r.json().catch(function(){ return {}; });
+      if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed");
+      return j.url;
+    }
+    function insertAtCursor(textarea, text) {
+      var start = textarea.selectionStart != null ? textarea.selectionStart : textarea.value.length;
+      var end   = textarea.selectionEnd   != null ? textarea.selectionEnd   : textarea.value.length;
+      var before= textarea.value.slice(0, start);
+      var after = textarea.value.slice(end);
+      textarea.value = before + text + after;
+      var pos = start + text.length;
+      if (textarea.setSelectionRange) textarea.setSelectionRange(pos, pos);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    window.addEventListener("DOMContentLoaded", function() {
+      var btn = document.getElementById("attachBtn");
+      var input = document.getElementById("attach");
+      var ta = document.getElementById("md");
+      if (!btn || !input || !ta) return;
+
+      btn.addEventListener("click", function(){ (input as any).click && (input as any).click(); });
+      input.addEventListener("change", async function() {
+        var files = Array.prototype.slice.call((input as any).files || []);
+        if (!files.length) return;
+        try {
+          var urls = [];
+          for (var i=0;i<files.length;i++) {
+            var url = await uploadImage(files[i]);
+            urls.push(url);
+          }
+          var md = urls.map(function(u){ return "![](" + u + ")"; }).join("\\n\\n");
+          insertAtCursor(ta as any, md);
+        } catch (e) {
+          alert("이미지 업로드 실패: " + (e && e.message ? e.message : e));
+          console.error(e);
+        } finally {
+          (input as any).value = "";
+        }
+      });
+    });
   </script>
 
   <script src="/assets/editor.js?v=${ver}"></script>
