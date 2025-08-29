@@ -1,11 +1,7 @@
 // lib/pages/editor.ts
-// 에디터 HTML 페이지 렌더러 (런타임 불문 재사용)
-// - 정적 클라이언트 스크립트: /assets/editor.js
-// - 전역 스타일: /assets/style.css
+// 에디터 HTML 페이지 렌더러
 
-export type EditorPageOptions = {
-  version?: string; // 캐시 버스터
-};
+export type EditorPageOptions = { version?: string };
 
 export function renderEditorHTML(opts: EditorPageOptions = {}): string {
   const ver = opts.version || "v8";
@@ -18,10 +14,20 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <title>Editor</title>
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
 <link rel="stylesheet" href="/assets/style.css">
+<style>
+  /* 인증 전엔 편집 버튼 숨김 */
+  .auth-only{display:none}
+  .authed .auth-only{display:inline-flex}
+  /* 오버레이 기본 표시 (인증되면 JS로 숨김) */
+  #lock{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1000}
+  #lock .panel{background:#fff;padding:16px 18px;border-radius:10px;min-width:280px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+  #lock .row{display:flex;gap:8px}
+  #lock .hint{margin-top:8px;font-size:12px;opacity:.8}
+</style>
 </head>
 <body class="editor-page">
-  <!-- 잠금 오버레이 (로그인 UI) -->
-  <div id="lock" style="display:none">
+  <!-- 잠금 오버레이 -->
+  <div id="lock">
     <div class="panel">
       <h2>Editor 로그인</h2>
       <div class="row">
@@ -32,7 +38,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
-  <!-- 상단 헤더 -->
+  <!-- 상단 기본 헤더 -->
   <header>
     <button class="auth-only" id="new">New</button>
     <button class="auth-only" id="save">Save Draft</button>
@@ -44,10 +50,8 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     <a href="/" style="margin-left:auto;opacity:.8" data-back>← 목록</a>
   </header>
 
-  <!-- 스티키 툴바 -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
     <button id="sideToggle" class="only-mobile" type="button" aria-controls="postVirtualList" aria-expanded="false">☰ 목록</button>
-
     <select id="filterSelect" aria-label="filter">
       <option value="all">all</option>
       <option value="published">published</option>
@@ -55,19 +59,15 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       <option value="page">page</option>
       <option value="post">post</option>
     </select>
-
     <span class="spacer" style="flex:1"></span>
-
     <button id="previewToggleBtn" type="button" aria-pressed="false" title="미리보기 토글">Preview</button>
     <label style="display:inline-flex;align-items:center;gap:6px">
-      <input id="publishedToggle" type="checkbox">
-      <span>published</span>
+      <input id="publishedToggle" type="checkbox"><span>published</span>
     </label>
   </div>
 
   <div class="wrap">
     <div class="editor-layout">
-      <!-- 좌측 목록 -->
       <aside class="editor-side side" aria-label="posts panel">
         <div class="side-head">
           <input id="searchInput" type="text" aria-label="Search posts" placeholder="제목/태그 검색…" />
@@ -126,7 +126,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <!-- 로마자 모듈 사전 로드 -->
   <script type="module">
-    (async function(){
+    (async () => {
       try {
         const mod = await import("https://esm.sh/korean-romanization");
         const romanize = (mod && (mod.romanize || mod.default));
@@ -134,136 +134,148 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
           window.__romanize = romanize;
           window.dispatchEvent(new CustomEvent("romanize-loaded"));
         }
-      } catch (e) {
-        console.warn("romanization preload failed", e);
-      }
+      } catch (e) { console.warn("romanization preload failed", e); }
     })();
   </script>
 
-  <!-- 모바일 사이드바 오버레이 토글 -->
+  <!-- ✅ 인증 오버레이 제어 -->
+  <script type="module">
+    const $ = (s) => document.querySelector(s);
+
+    function setToken(tok){
+      try { localStorage.setItem("editor_token", tok); } catch {}
+      document.cookie = "editor_token=" + encodeURIComponent(tok) + "; Path=/; Max-Age=" + (60*60*24*7) + "; SameSite=Lax; Secure";
+    }
+    function getToken(){
+      try { const t = localStorage.getItem("editor_token"); if (t) return t; } catch {}
+      const m = document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/);
+      return m ? decodeURIComponent(m[1]) : "";
+    }
+    async function checkKey(tok){
+      if (!tok) return false;
+      try {
+        const r = await fetch("/api/check-key", { headers: { "x-editor-token": tok }});
+        const j = await r.json().catch(()=>({}));
+        return r.ok && j && j.ok === true;
+      } catch { return false; }
+    }
+
+    async function requireAuth(){
+      const lock = $("#lock");
+      const input= $("#key");
+      const btn  = $("#signin");
+      const hint = $("#lock-hint");
+
+      // 1) 자동 시도
+      const existing = getToken();
+      if (await checkKey(existing)) {
+        if (lock) lock.style.display = "none";
+        document.body.classList.add("authed");
+        window.dispatchEvent(new CustomEvent("editor-auth-ok"));
+        return;
+      }
+
+      // 2) 오버레이 표시 + 수동 로그인
+      if (lock) lock.style.display = "";
+      document.body.classList.remove("authed");
+
+      async function submit(){
+        const tok = (input && input.value) ? String(input.value).trim() : "";
+        if (!tok) { if (hint) hint.textContent = "비밀번호를 입력하세요."; return; }
+        if (hint) hint.textContent = "확인 중…";
+        const ok = await checkKey(tok);
+        if (ok){
+          setToken(tok);
+          if (hint) hint.textContent = "";
+          if (lock) lock.style.display = "none";
+          document.body.classList.add("authed");
+          window.dispatchEvent(new CustomEvent("editor-auth-ok"));
+        } else {
+          if (hint) hint.textContent = "비밀번호가 올바르지 않습니다.";
+          if (input && input.select) input.select();
+        }
+      }
+
+      if (btn) btn.addEventListener("click", (e)=>{ e.preventDefault(); submit(); });
+      if (input) input.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
+    }
+
+    window.addEventListener("DOMContentLoaded", requireAuth);
+
+    // (옵션) 로그아웃 전역 함수
+    window.logoutEditor = function(){
+      try { localStorage.removeItem("editor_token"); } catch {}
+      document.cookie = "editor_token=; Path=/; Max-Age=0; SameSite=Lax; Secure";
+      const lock = document.getElementById("lock");
+      if (lock) lock.style.display = "";
+      document.body.classList.remove("authed");
+    };
+  </script>
+
+  <!-- 모바일 사이드바 토글 -->
   <script type="module">
     (function(){
-      const side     = document.querySelector('.editor-side');
-      const toggleBtn= document.getElementById('sideToggle');
-      const backdrop = document.getElementById('sideBackdrop');
-      if (!side || !toggleBtn || !backdrop) return;
-
-      const mq = window.matchMedia('(max-width: 900px)');
-      const isMobile = () => mq.matches;
-
-      function openSide() {
-        document.body.classList.add('side-open');
-        toggleBtn.setAttribute('aria-expanded', 'true');
-        if (isMobile()) document.body.classList.add('no-scroll');
-      }
-      function closeSide() {
-        document.body.classList.remove('side-open','no-scroll');
-        toggleBtn.setAttribute('aria-expanded', 'false');
-      }
-      function toggleSide() {
-        if (document.body.classList.contains('side-open')) closeSide();
-        else openSide();
-      }
-
-      toggleBtn.addEventListener('click', function(e){ e.preventDefault(); toggleSide(); });
-      backdrop.addEventListener('click', closeSide);
-      document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeSide(); });
-
-      side.addEventListener('click', function(e){
-        const t = e.target;
-        if (t && typeof t.closest === 'function') {
-          const row = t.closest('.virtual-row');
-          if (row && isMobile()) setTimeout(closeSide, 0);
-        }
-      });
-
-      if (mq.addEventListener) mq.addEventListener('change', function(){ if (!isMobile()) closeSide(); });
-      window.addEventListener('resize', function(){ if (!isMobile()) closeSide(); });
+      const side=document.querySelector('.editor-side');
+      const btn=document.getElementById('sideToggle');
+      const bd=document.getElementById('sideBackdrop');
+      if (!side||!btn||!bd) return;
+      const mq=window.matchMedia('(max-width: 900px)'); const isM=()=>mq.matches;
+      function open(){ document.body.classList.add('side-open'); btn.setAttribute('aria-expanded','true'); if(isM()) document.body.classList.add('no-scroll'); }
+      function close(){ document.body.classList.remove('side-open','no-scroll'); btn.setAttribute('aria-expanded','false'); }
+      btn.addEventListener('click',(e)=>{ e.preventDefault(); document.body.classList.contains('side-open')?close():open(); });
+      bd.addEventListener('click', close);
+      document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close(); });
+      side.addEventListener('click',(e)=>{ const row=e.target&&e.target.closest?e.target.closest('.virtual-row'):null; if(row&&isM()) setTimeout(close,0); });
+      mq.addEventListener?.('change',()=>{ if(!isM()) close(); });
+      window.addEventListener('resize',()=>{ if(!isM()) close(); });
     })();
   </script>
 
   <!-- 이미지 업로드 → 본문 삽입 -->
   <script type="module">
-    function getToken() {
-      try {
-        const t = localStorage.getItem("editor_token");
-        if (t) return t;
-      } catch {}
-      const m = document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/);
-      return m ? decodeURIComponent(m[1]) : "";
+    function token(){ try{const t=localStorage.getItem("editor_token"); if(t) return t;}catch{} const m=document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/); return m?decodeURIComponent(m[1]):""; }
+    async function uploadImage(file){
+      const t = token();
+      if (!t) throw new Error("에디터 토큰이 없습니다. 먼저 로그인하세요.");
+      const fd = new FormData(); fd.set("file", file);
+      const r = await fetch("/api/upload", { method:"POST", body:fd, headers:{ "x-editor-token": t }});
+      const j = await r.json().catch(()=>({})); if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed"); return j.url;
     }
-
-    async function uploadImage(file) {
-      const token = getToken();
-      if (!token) throw new Error("에디터 토큰이 없습니다. 먼저 로그인하세요.");
-      const fd = new FormData();
-      fd.set("file", file);
-      const r = await fetch("/api/upload", {
-        method: "POST",
-        body: fd,
-        headers: { "x-editor-token": token }
-      });
-      const j = await r.json().catch(function(){ return {}; });
-      if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed");
-      return j.url;
+    function insertAtCursor(ta, text){
+      const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      const e = ta.selectionEnd   != null ? ta.selectionEnd   : ta.value.length;
+      const before=ta.value.slice(0,s), after=ta.value.slice(e);
+      ta.value = before + text + after;
+      const pos = s + text.length;
+      ta.setSelectionRange && ta.setSelectionRange(pos,pos);
+      ta.dispatchEvent(new Event("input",{bubbles:true}));
     }
-
-    function insertAtCursor(textarea, text) {
-      const start = textarea.selectionStart != null ? textarea.selectionStart : textarea.value.length;
-      const end   = textarea.selectionEnd   != null ? textarea.selectionEnd   : textarea.value.length;
-      const before= textarea.value.slice(0, start);
-      const after = textarea.value.slice(end);
-      textarea.value = before + text + after;
-      const pos = start + text.length;
-      if (textarea.setSelectionRange) textarea.setSelectionRange(pos, pos);
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-
-    window.addEventListener("DOMContentLoaded", function() {
-      const btn   = document.getElementById("attachBtn");
-      const input = document.getElementById("attach");
-      const ta    = document.getElementById("md");
-      const hintEl= document.getElementById("hint");
-      if (!btn || !input || !ta) return;
-
-      btn.addEventListener("click", function(){
-        if (typeof (input as any) === "undefined") { /* TS 회피용 no-op */ }
-        if (input && typeof (input as HTMLInputElement).click === "function") {
-          (input as HTMLInputElement).click();
-        } else {
-          // 순수 JS: 타입 캐스트 없이 안전 호출
-          // @ts-ignore-next-line
-          if (input && input.click) input.click();
-        }
-      });
-
-      input.addEventListener("change", async function() {
-        // @ts-ignore-next-line
-        const files = input && input.files ? Array.from(input.files) : [];
+    window.addEventListener("DOMContentLoaded", function(){
+      const btn=document.getElementById("attachBtn");
+      const input=document.getElementById("attach");
+      const ta=document.getElementById("md");
+      const hint=document.getElementById("hint");
+      if (!btn||!input||!ta) return;
+      btn.addEventListener("click", ()=>{ input.click && input.click(); });
+      input.addEventListener("change", async ()=>{
+        const files = input.files ? Array.from(input.files) : [];
         if (!files.length) return;
         try {
-          const urls = [];
-          for (let i = 0; i < files.length; i++) {
-            const url = await uploadImage(files[i]);
-            urls.push(url);
-          }
-          const md = urls.map(function(u){ return "![](" + u + ")"; }).join("\\n\\n");
-          // @ts-ignore-next-line
-          insertAtCursor(ta, md);
-          if (hintEl) hintEl.textContent = "이미지 " + urls.length + "개 첨부됨.";
-        } catch (e) {
-          const msg = (e && (e as any).message) ? (e as any).message : String(e);
-          if (hintEl) hintEl.textContent = "이미지 업로드 실패: " + msg;
+          const urls=[]; for (let i=0;i<files.length;i++){ urls.push(await uploadImage(files[i])); }
+          insertAtCursor(ta, urls.map(u => "![](" + u + ")").join("\\n\\n"));
+          if (hint) hint.textContent = "이미지 " + urls.length + "개 첨부됨.";
+        } catch(e){
+          if (hint) hint.textContent = "이미지 업로드 실패: " + (e && e.message ? e.message : String(e));
           console.error(e);
         } finally {
-          // @ts-ignore-next-line
-          if (input) input.value = "";
-          setTimeout(function(){ if (hintEl) hintEl.textContent = ""; }, 4000);
+          input.value = "";
+          setTimeout(()=>{ if (hint) hint.textContent=""; }, 4000);
         }
       });
     });
   </script>
 
   <script src="/assets/editor.js?v=${ver}"></script>
-</body></html>`;
+</body>
+</html>`;
 }
