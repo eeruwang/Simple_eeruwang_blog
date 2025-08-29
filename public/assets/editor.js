@@ -1,22 +1,16 @@
-/* public/assets/editor.js
-   - ESM: export async function initEditor()
-   - 로그인 성공 후 lib/pages/editor.ts에서 동적 import로 호출됨
+/* public/assets/editor.js — Full editor app (ESM, robust)
+   - 로그인 성공 후 동적 import → initEditor() 실행
+   - EasyMDE 로드 대기, API 에러 힌트 표시
 */
-
 export async function initEditor() {
   const $ = (s) => document.querySelector(s);
 
-  // ----- 상태 -----
-  let state = {
-    id: null,
-    slug: "",
-    is_page: false,
-    published: false,
-  };
-
-  // ----- 토큰 / fetch 유틸 -----
+  // ----- Token / API -----
   function getToken() {
-    try { const t = localStorage.getItem("editor_token"); if (t) return t; } catch {}
+    try {
+      const t1 = localStorage.getItem("editor_token"); if (t1) return t1;
+      const t2 = localStorage.getItem("x-editor-token"); if (t2) return t2;
+    } catch {}
     const m = document.cookie.match(/(?:^|;\s*)editor_token=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : "";
   }
@@ -26,7 +20,7 @@ export async function initEditor() {
   }
   async function apiGet(url) {
     const r = await fetch(url, { headers: authHeaders() });
-    const j = await r.json().catch(()=> ({}));
+    const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || r.statusText);
     return j;
   }
@@ -36,12 +30,12 @@ export async function initEditor() {
       headers: authHeaders({ "content-type": "application/json" }),
       body: body ? JSON.stringify(body) : undefined,
     });
-    const j = await r.json().catch(()=> ({}));
+    const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || r.statusText);
     return j;
   }
 
-  // ----- DOM -----
+  // ----- DOM refs -----
   const el = {
     list: $("#postVirtualList"),
     search: $("#searchInput"),
@@ -67,11 +61,61 @@ export async function initEditor() {
     hint: $("#hint"),
   };
 
-  // ----- EasyMDE -----
+  // ----- Hint / utils -----
+  function setHint(msg, ms = 3000) {
+    if (!el.hint) return;
+    el.hint.textContent = msg || "";
+    if (msg) setTimeout(() => { if (el.hint.textContent === msg) el.hint.textContent = ""; }, ms);
+  }
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+  function slugify(s) {
+    const base = String(s || "").trim();
+    const roman = typeof window.__romanize === "function" ? window.__romanize(base) : base;
+    return roman.toLowerCase()
+      .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-{2,}/g, "-") || "post";
+  }
+  function readTagsInput(val) {
+    if (Array.isArray(val)) return val.map(String);
+    return String(val || "").split(",").map(s => s.trim()).filter(Boolean);
+  }
+  function updatePermalink(slug) {
+    if (el.permalink) el.permalink.textContent = `Permalink: /post/${encodeURIComponent(slug || "")}`;
+  }
+  function getPublishAtFromInputs() {
+    const d = (el.pubdate && el.pubdate.value) ? el.pubdate.value : "";
+    const t = (el.pubtime && el.pubtime.value) ? el.pubtime.value : "";
+    if (!d && !t) return null;
+    return d ? (t ? `${d}T${t}:00` : `${d}T00:00:00`) : new Date().toISOString();
+  }
+  function selectRowInList(id) {
+    if (!el.list) return;
+    el.list.querySelectorAll(".virtual-row").forEach(x => x.classList.remove("active"));
+    const row = el.list.querySelector(`.virtual-row[data-id="${id}"]`);
+    if (row) row.classList.add("active");
+  }
+
+  // ----- EasyMDE: wait until loaded -----
   let mde = null;
-  function ensureEditor() {
+  function getEditor() {
+    if (!mde) throw new Error("editor not ready");
+    return mde;
+  }
+  async function waitForEasyMDE(timeoutMs = 5000) {
+    const start = Date.now();
+    while (!window.EasyMDE) {
+      await new Promise(r => setTimeout(r, 50));
+      if (Date.now() - start > timeoutMs) throw new Error("EasyMDE가 로드되지 않았습니다.");
+    }
+  }
+  async function ensureEditorReady() {
     if (mde) return mde;
-    // EasyMDE 전역이 로드되어 있음 (head에 CDN)
+    await waitForEasyMDE();
     mde = new window.EasyMDE({
       element: el.md,
       autofocus: false,
@@ -81,57 +125,11 @@ export async function initEditor() {
       minHeight: "300px",
       placeholder: "Write in Markdown…",
     });
-    // 에디터 변경 시 슬러그/퍼머링크 등 UI 업데이트
-    mde.codemirror.on("change", () => {
-      // no-op
-    });
     return mde;
   }
 
-  // ----- 헬퍼 -----
-  function setHint(msg, ms = 2500) {
-    if (!el.hint) return;
-    el.hint.textContent = msg || "";
-    if (msg) setTimeout(() => { if (el.hint.textContent === msg) el.hint.textContent = ""; }, ms);
-  }
-
-  function slugify(s) {
-    const base = String(s || "").trim();
-    const roman = typeof window.__romanize === "function" ? window.__romanize(base) : base;
-    return roman
-      .toLowerCase()
-      .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
-      .replace(/^-+|-+$/g, "")
-      .replace(/-{2,}/g, "-")
-      || "post";
-  }
-
-  function readTagsInput(val) {
-    if (Array.isArray(val)) return val.map(String);
-    return String(val || "")
-      .split(",")
-      .map(s => s.trim())
-      .filter(Boolean);
-  }
-
-  function updatePermalink(slug) {
-    if (el.permalink) el.permalink.textContent = `Permalink: /post/${encodeURIComponent(slug || "")}`;
-  }
-
-  function getPublishAtFromInputs() {
-    const d = (el.pubdate && el.pubdate.value) ? el.pubdate.value : "";
-    const t = (el.pubtime && el.pubtime.value) ? el.pubtime.value : "";
-    if (!d && !t) return null;
-    const iso = d ? (t ? `${d}T${t}:00` : `${d}T00:00:00`) : new Date().toISOString();
-    return iso;
-  }
-
-  function selectRowInList(id) {
-    if (!el.list) return;
-    el.list.querySelectorAll(".virtual-row").forEach(x => x.classList.remove("active"));
-    const row = el.list.querySelector(`.virtual-row[data-id="${id}"]`);
-    if (row) row.classList.add("active");
-  }
+  // ----- State -----
+  let state = { id: null, slug: "", is_page: false, published: false };
 
   function useRecord(rec) {
     state = {
@@ -151,7 +149,7 @@ export async function initEditor() {
 
     if (rec?.published_at && el.pubdate && el.pubtime) {
       const dt = new Date(rec.published_at);
-      const pad = (n) => String(n).padStart(2, "0");
+      const pad = (n) => String(n).padStart(2,"0");
       el.pubdate.value = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
       el.pubtime.value = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     } else {
@@ -159,23 +157,27 @@ export async function initEditor() {
       if (el.pubtime) el.pubtime.value = "";
     }
 
-    ensureEditor().value(rec?.body_md || "");
+    try { getEditor().value(rec?.body_md || ""); } catch {}
     selectRowInList(rec?.id);
   }
 
-  // ----- 목록 -----
+  // ----- List -----
   let lastList = [];
   async function loadList() {
-    const j = await apiGet(`/api/posts?limit=1000&offset=0`);
-    lastList = Array.isArray(j.list) ? j.list : [];
+    try {
+      const j = await apiGet(`/api/posts?limit=1000&offset=0`);
+      lastList = Array.isArray(j.list) ? j.list : [];
+    } catch (e) {
+      lastList = [];
+      console.error(e);
+      setHint("목록 로드 실패: " + (e.message || e));
+    }
     renderList();
   }
-
   function renderList() {
     if (!el.list) return;
     const q = (el.search && el.search.value ? el.search.value : "").toLowerCase();
     const filter = el.filter ? el.filter.value : "all";
-
     const filtered = lastList.filter((r) => {
       if (filter === "published" && !r.published) return false;
       if (filter === "draft" && r.published) return false;
@@ -191,13 +193,12 @@ export async function initEditor() {
       return `<div class="virtual-row" role="option" data-id="${r.id}" aria-selected="false" tabindex="0">
         <div class="row" style="gap:8px;align-items:center">
           <strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.title || "(untitled)")}</strong>
-          <span style="font-size:12px;opacity:.7">${escapeHtml((r.slug || ""))}</span>
+          <span style="font-size:12px;opacity:.7">${escapeHtml(r.slug || "")}</span>
         </div>
         <div class="meta" style="font-size:12px;opacity:.7">${escapeHtml(dateStr)}</div>
       </div>`;
     }).join("");
 
-    // 바인딩
     el.list.querySelectorAll(".virtual-row").forEach((row) => {
       row.addEventListener("click", async () => {
         const id = Number(row.getAttribute("data-id") || "0");
@@ -216,13 +217,7 @@ export async function initEditor() {
     });
   }
 
-  function escapeHtml(s) {
-    return String(s || "")
-      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-  }
-
-  // ----- 액션: New / Save / Publish / Delete -----
+  // ----- Actions -----
   function readForm() {
     const title = el.title ? el.title.value : "";
     const slugIn = el.slug ? el.slug.value : "";
@@ -231,96 +226,93 @@ export async function initEditor() {
     const excerpt = el.excerpt ? el.excerpt.value : "";
     const is_page = el.isPage ? !!el.isPage.checked : false;
     const published = el.publishedToggle ? !!el.publishedToggle.checked : false;
-    const body_md = ensureEditor().value();
+    const body_md = getEditor().value();
     return { title, slug, tags, excerpt, is_page, published, body_md };
   }
 
   async function actionNew() {
     useRecord({
-      id: null,
-      title: "",
-      slug: "",
-      tags: [],
-      excerpt: "",
-      is_page: false,
-      published: false,
-      body_md: "",
+      id: null, title: "", slug: "", tags: [],
+      excerpt: "", is_page: false, published: false, body_md: "",
     });
     setHint("새 글");
   }
 
   async function actionSaveDraft() {
-    const data = readForm();
-    data.published = false;
-    // draft는 published_at 비움
-    const payload = { ...data, published_at: null };
-
-    let rec;
-    if (state.id) {
-      rec = await apiSend(`/api/posts/${state.id}`, "PATCH", payload);
-      setHint("임시저장 완료");
-    } else {
-      const j = await apiSend(`/api/posts`, "POST", payload);
-      rec = j && j.created ? j.created[0] : null;
-      setHint("초안 생성 완료");
-    }
-    await loadList();
-    if (rec && rec.id) {
-      const full = await apiGet(`/api/posts/${rec.id}`);
-      useRecord(full);
+    try {
+      const data = readForm();
+      data.published = false;
+      const payload = { ...data, published_at: null };
+      let rec;
+      if (state.id) {
+        rec = await apiSend(`/api/posts/${state.id}`, "PATCH", payload);
+        setHint("임시저장 완료");
+      } else {
+        const j = await apiSend(`/api/posts`, "POST", payload);
+        rec = j && j.created ? j.created[0] : null;
+        setHint("초안 생성 완료");
+      }
+      await loadList();
+      if (rec && rec.id) useRecord(await apiGet(`/api/posts/${rec.id}`));
+    } catch (e) {
+      console.error(e);
+      setHint("저장 실패: " + (e.message || e));
     }
   }
 
   async function actionPublish() {
-    const data = readForm();
-    data.published = true;
-    const published_at = getPublishAtFromInputs();
-
-    let rec;
-    if (state.id) {
-      rec = await apiSend(`/api/posts/${state.id}`, "PATCH", { ...data, published_at });
+    try {
+      const data = readForm();
+      data.published = true;
+      const published_at = getPublishAtFromInputs();
+      let rec;
+      if (state.id) {
+        rec = await apiSend(`/api/posts/${state.id}`, "PATCH", { ...data, published_at });
+      } else {
+        const j = await apiSend(`/api/posts`, "POST", { ...data, published_at });
+        rec = j && j.created ? j.created[0] : null;
+      }
       setHint("발행 완료");
-    } else {
-      const j = await apiSend(`/api/posts`, "POST", { ...data, published_at });
-      rec = j && j.created ? j.created[0] : null;
-      setHint("발행 완료");
-    }
-    await loadList();
-    if (rec && rec.id) {
-      const full = await apiGet(`/api/posts/${rec.id}`);
-      useRecord(full);
+      await loadList();
+      if (rec && rec.id) useRecord(await apiGet(`/api/posts/${rec.id}`));
+    } catch (e) {
+      console.error(e);
+      setHint("발행 실패: " + (e.message || e));
     }
   }
 
   async function actionDelete() {
-    if (!state.id) { setHint("삭제할 항목이 없습니다."); return; }
-    if (!confirm("정말 삭제할까요?")) return;
-    await apiSend(`/api/posts/${state.id}`, "DELETE");
-    setHint("삭제 완료");
-    await loadList();
-    await actionNew();
+    try {
+      if (!state.id) { setHint("삭제할 항목이 없습니다."); return; }
+      if (!confirm("정말 삭제할까요?")) return;
+      await apiSend(`/api/posts/${state.id}`, "DELETE");
+      setHint("삭제 완료");
+      await loadList();
+      await actionNew();
+    } catch (e) {
+      console.error(e);
+      setHint("삭제 실패: " + (e.message || e));
+    }
   }
 
-  // ----- 프리뷰 -----
+  // ----- Preview -----
   async function updatePreview() {
     if (!el.previewFrame) return;
-    const md = ensureEditor().value();
+    const md = getEditor().value();
     try {
       const j = await apiSend("/api/posts/preview", "POST", { md });
       const html = (j && j.html) ? j.html : "<p>(preview failed)</p>";
-      el.previewFrame.srcdoc = `
-        <!doctype html><meta charset="utf-8">
+      el.previewFrame.srcdoc = `<!doctype html><meta charset="utf-8">
         <link rel="stylesheet" href="/assets/style.css">
         <article class="post">${html}</article>`;
     } catch (e) {
       el.previewFrame.srcdoc = `<p style="color:#c00">미리보기 실패: ${escapeHtml(e.message || String(e))}</p>`;
     }
   }
-
   function togglePreview() {
     if (!el.previewPane || !el.previewBtn) return;
-    const on = el.previewPane.hasAttribute("hidden");
-    if (on) {
+    const hidden = el.previewPane.hasAttribute("hidden");
+    if (hidden) {
       el.previewPane.removeAttribute("hidden");
       el.previewBtn.setAttribute("aria-pressed", "true");
       updatePreview();
@@ -330,11 +322,11 @@ export async function initEditor() {
     }
   }
 
-  // ----- 바인딩 -----
-  el.btnNew?.addEventListener("click", (e)=>{ e.preventDefault(); actionNew().catch(console.error); });
-  el.btnSave?.addEventListener("click", (e)=>{ e.preventDefault(); actionSaveDraft().catch(err => { console.error(err); setHint("저장 실패"); }); });
-  el.btnPublish?.addEventListener("click", (e)=>{ e.preventDefault(); actionPublish().catch(err => { console.error(err); setHint("발행 실패"); }); });
-  el.btnDelete?.addEventListener("click", (e)=>{ e.preventDefault(); actionDelete().catch(err => { console.error(err); setHint("삭제 실패"); }); });
+  // ----- Bindings -----
+  el.btnNew?.addEventListener("click", (e)=>{ e.preventDefault(); actionNew(); });
+  el.btnSave?.addEventListener("click", (e)=>{ e.preventDefault(); actionSaveDraft(); });
+  el.btnPublish?.addEventListener("click", (e)=>{ e.preventDefault(); actionPublish(); });
+  el.btnDelete?.addEventListener("click", (e)=>{ e.preventDefault(); actionDelete(); });
   el.previewBtn?.addEventListener("click", (e)=>{ e.preventDefault(); togglePreview(); });
 
   el.title?.addEventListener("input", () => {
@@ -348,12 +340,18 @@ export async function initEditor() {
   el.publishedToggle?.addEventListener("change", () => {
     if (el.status) el.status.textContent = el.publishedToggle.checked ? "published" : "draft";
   });
-  el.search?.addEventListener("input", renderList);
-  el.filter?.addEventListener("change", renderList);
+  el.search?.addEventListener("input", () => renderList());
+  el.filter?.addEventListener("change", () => renderList());
 
-  // ----- 초기 부팅 -----
-  ensureEditor();
-  await loadList();
-  await actionNew(); // 새 글 상태로 시작
+  // ----- Boot -----
+  try {
+    await ensureEditorReady();     // ✅ EasyMDE가 올 때까지 대기
+  } catch (e) {
+    console.error(e);
+    setHint(String(e.message || e));
+    // 에디터 없이도 나머지 UI는 보이게만 함
+  }
+  await loadList();               // 실패해도 UI는 그려짐(빈 목록)
+  await actionNew();
   setHint("에디터 준비됨");
 }
