@@ -1,7 +1,7 @@
 // lib/db/db.ts
 /* Cross-runtime Postgres client:
- * - Vercel/Neon(serverless): @neondatabase/serverless
- * - Docker/Node: pg Pool
+ * - Vercel/Neon(serverless): @neondatabase/serverless (fetch 기반)
+ * - Docker/Node: pg Pool (TCP)
  *
  * 선택 규칙
  * 1) process.env.NEON_DATABASE_URL 가 있으면 네온 드라이버 사용
@@ -25,7 +25,7 @@ export type PostRow = {
   updated_at: string;
 };
 
-// 배열이면서 .rows도 가진 타입 (두 패턴 모두 호환)
+// 배열이면서 .rows 도 가진 타입 (양쪽 패턴 호환)
 type Rows<T> = T[] & { rows: T[] };
 
 type Queryable = {
@@ -67,10 +67,10 @@ async function createClient(): Promise<Queryable> {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(DATABASE_URL);
 
-    // Array params를 받는 query 래퍼 제공 (배열 + .rows 둘 다 제공)
+    // 배열 + .rows 둘 다 제공
     const query = async <T = unknown>(text: string, params: any[] = []) => {
       const arr = (await (sql as any).unsafe(text, params)) as T[];
-      (arr as any).rows = arr;
+      (arr as any).rows = arr; // ← 호환성 부여
       return arr as Rows<T>;
     };
 
@@ -94,7 +94,7 @@ async function createClient(): Promise<Queryable> {
     const query: Queryable["query"] = async (text, params) => {
       const res = await pool.query(text, params);
       const arr = res.rows as any[];
-      (arr as any).rows = arr;
+      (arr as any).rows = arr; // ← 호환성 부여
       return arr as Rows<any>;
     };
 
@@ -114,7 +114,7 @@ async function getClient(): Promise<Queryable> {
 
 export async function query<T = unknown>(text: string, params?: any[]) {
   const client = await getClient();
-  return client.query<T>(text, params); // 반환: Rows<T>
+  return client.query<T>(text, params); // 반환: Rows<T> (배열 + .rows)
 }
 
 // 작은 유틸
@@ -125,6 +125,11 @@ function pageOffset(page = 1, perPage = 10) {
   const p = clamp((page as number) | 0, 1, 1_000_000);
   const take = clamp((perPage as number) | 0, 1, 200);
   return { take, offset: (p - 1) * take };
+}
+
+// (옵션) 드라이버 확인용
+export function driverKind() {
+  return looksLikeNeon ? "neon" : "pg";
 }
 
 // DB 헬스체크
