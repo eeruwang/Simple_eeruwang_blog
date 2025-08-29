@@ -4,7 +4,7 @@
 export type EditorPageOptions = { version?: string };
 
 export function renderEditorHTML(opts: EditorPageOptions = {}): string {
-  const ver = opts.version || "v12"; // ← 캐시 버스터 최신값 권장
+  const ver = opts.version || "v12"; // 캐시 버스터
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -15,14 +15,18 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
 <link rel="stylesheet" href="/assets/style.css">
 <style>
-  .auth-only { display:none }
-  .authed .auth-only { display:inline-flex }
+  /* 기본: 숨김 */
+  .auth-only { display: none; }
+  /* 로그인 후: 확실히 보이게 !important */
+  body.authed .auth-only { display: inline-flex !important; }
 
+  /* 로그인 오버레이 */
   #lock{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1000}
   #lock .panel{background:#fff;padding:16px 18px;border-radius:10px;min-width:280px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
   #lock .row{display:flex;gap:8px}
   #lock .hint{margin-top:8px;font-size:12px;opacity:.8}
 
+  /* 폴백: 에디터 초기화 실패해도 textarea는 보이게 */
   #md{display:block; min-height:320px}
 </style>
 </head>
@@ -39,7 +43,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
-  <!-- 상단 헤더 -->
+  <!-- 상단 헤더 (로그인 후 보임) -->
   <header>
     <button class="auth-only" id="new">New</button>
     <button class="auth-only" id="save">Save Draft</button>
@@ -51,7 +55,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     <a href="/" style="margin-left:auto;opacity:.8" data-back>← 목록</a>
   </header>
 
-  <!-- 툴바 -->
+  <!-- 툴바 (로그인 후 보임) -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
     <button id="sideToggle" class="only-mobile" type="button" aria-controls="postVirtualList" aria-expanded="false">☰ 목록</button>
     <select id="filterSelect" aria-label="filter">
@@ -135,6 +139,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
         const mod = await import("https://esm.sh/korean-romanization");
         const romanize = (mod && (mod.romanize || mod.default));
         if (typeof romanize === "function") {
+          // @ts-ignore
           window.__romanize = romanize;
           window.dispatchEvent(new CustomEvent("romanize-loaded"));
         }
@@ -160,8 +165,12 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       try {
         const r = await fetch("/api/check-key", { headers: { "x-editor-token": tok }});
         const j = await r.json().catch(()=>({}));
+        console.debug("[editor] check-key:", r.status, j);
         return r.ok && j && j.ok === true;
-      } catch { return false; }
+      } catch (e) {
+        console.warn("[editor] check-key fail:", e);
+        return false;
+      }
     }
 
     // 로그인 성공 후 editor.js를 동적 import → initEditor() 실행
@@ -173,7 +182,9 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
         const mod = await import("/assets/editor.js?v=${ver}");
         const init = mod && (mod.initEditor || mod.default) || (window.initEditor || (window.EditorApp && window.EditorApp.init));
         if (typeof init === "function") {
+          console.debug("[editor] initEditor start");
           await init();
+          console.debug("[editor] initEditor done");
           if (hint) hint.textContent = "";
         } else {
           if (hint) hint.textContent = "editor.js: init 함수를 찾을 수 없습니다.";
@@ -194,8 +205,9 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       // 자동 시도
       const existing = getToken();
       if (await checkKey(existing)) {
+        console.debug("[editor] authed via existing token");
         if (lock) lock.style.display = "none";
-        document.body.classList.add("authed");
+        document.body.classList.add("authed"); // <- 메뉴 보이게
         await bootEditor();
         return;
       }
@@ -207,12 +219,11 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
         const tok = (input && (input as HTMLInputElement).value) ? String((input as HTMLInputElement).value).trim() : "";
         if (!tok) { if (hint) hint.textContent = "비밀번호를 입력하세요."; return; }
         if (hint) hint.textContent = "확인 중…";
-        const ok = await checkKey(tok);
-        if (ok){
+        if (await checkKey(tok)){
           setToken(tok);
           if (hint) hint.textContent = "";
           if (lock) lock.style.display = "none";
-          document.body.classList.add("authed");
+          document.body.classList.add("authed"); // <- 메뉴 보이게
           await bootEditor();
         } else {
           if (hint) hint.textContent = "비밀번호가 올바르지 않습니다.";
