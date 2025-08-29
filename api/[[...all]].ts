@@ -22,7 +22,6 @@ type Env = {
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 function getEditorTokenFromHeaders(req: VercelRequest): string {
-  // x-editor-token / x-editor-key 둘 다 허용
   return (
     (req.headers["x-editor-token"] as string) ||
     (req.headers["x-editor-key"] as string) ||
@@ -158,7 +157,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 2.5) 이미지 업로드 (multipart/form-data; field name: "file")
     if (path === "/api/upload" && req.method === "POST") {
-      // 에디터 인증
       const tok = getEditorTokenFromHeaders(req);
       if (!tok || tok !== env.EDITOR_PASSWORD) {
         applyEditorCors(req, res, env);
@@ -187,37 +185,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // WHATWG Request로 변환 → formData 파싱
       const webReq = new Request(url.toString(), { method: "POST", headers: hdrs, body: bodyBuf });
       const form = await webReq.formData().catch(() => null);
-      const file = form?.get("file") as unknown as File | null;
+      const file = (form?.get("file") as any) as File | null;
 
-      if (!file || typeof file.name !== "string") {
+      if (!file) {
         setSecurityHeadersVercel(res);
         return res.status(400).json({ error: "No file" });
       }
 
-      // 간단한 검증
-      if (!/^image\//i.test(file.type)) {
+      const type = (file as any).type || "";
+      if (!/^image\//i.test(type)) {
         setSecurityHeadersVercel(res);
         return res.status(415).json({ error: "Only image/* allowed" });
       }
       const size = (file as any).size ?? 0;
-      const MAX = 10 * 1024 * 1024; // 10MB
-      if (size > MAX) {
+      if (size > 10 * 1024 * 1024) {
         setSecurityHeadersVercel(res);
         return res.status(413).json({ error: "File too large" });
       }
 
-      const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(0, 120);
-      const key = `uploads/${Date.now()}-${safeName}`;
-      const blob = await put(key, file, { access: "public", token: BLOB_TOKEN });
+      // 이름 없어도 동작하도록 키 생성
+      function extFromType(t: string) {
+        if (/png/i.test(t)) return "png";
+        if (/jpe?g/i.test(t)) return "jpg";
+        if (/webp/i.test(t)) return "webp";
+        if (/gif/i.test(t)) return "gif";
+        if (/svg/i.test(t)) return "svg";
+        return "";
+      }
+      function rand(n = 6) {
+        return Math.random().toString(36).slice(2, 2 + n);
+      }
+      const original = ((file as any).name && String((file as any).name)) || "";
+      const ext = extFromType(type);
+      const base = original
+        ? original.replace(/[^\w.\-]+/g, "_").slice(0, 120)
+        : `blob.${ext || "bin"}`;
+      const key = `uploads/${Date.now()}-${rand()}-${base}`;
+
+      const blob = await put(key, file, {
+        access: "public",
+        token: BLOB_TOKEN,
+        contentType: type || undefined,
+      });
 
       applyEditorCors(req, res, env);
       setSecurityHeadersVercel(res);
-      return res.status(200).json({ ok: true, url: blob.url, key, contentType: file.type, size });
+      return res.status(200).json({ ok: true, url: (blob as any).url, key, contentType: type, size });
     }
 
     // 3) 에디터 API 보호 라우트 (/api/…)
     if (path.startsWith("/api/")) {
-      // 🔐 가드: 토큰 검사
       const tok = getEditorTokenFromHeaders(req);
       if (!tok || tok !== env.EDITOR_PASSWORD) {
         applyEditorCors(req, res, env);
@@ -233,26 +250,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       let bodyInit: BodyInit | undefined;
       if (req.method !== "GET" && req.method !== "HEAD") {
-        if (Buffer.isBuffer(req.body)) {
-          bodyInit = new Uint8Array(req.body);
-        } else if (typeof req.body === "string") {
-          bodyInit = req.body;
-        } else if (req.body == null) {
-          bodyInit = undefined;
-        } else {
-          if (!headers.has("content-type")) {
-            headers.set("content-type", "application/json");
-          }
+        if (Buffer.isBuffer(req.body)) bodyInit = new Uint8Array(req.body);
+        else if (typeof req.body === "string") bodyInit = req.body;
+        else if (req.body == null) bodyInit = undefined;
+        else {
+          if (!headers.has("content-type")) headers.set("content-type", "application/json");
           bodyInit = JSON.stringify(req.body);
         }
       }
 
-      const webReq = new Request(url.toString(), {
-        method: req.method,
-        headers,
-        body: bodyInit,
-      });
-
+      const webReq = new Request(url.toString(), { method: req.method, headers, body: bodyInit });
       const r = await handleEditorApi(webReq, env);
       applyEditorCors(req, res, env);
       return await sendFetchResponse(res, r);
@@ -324,7 +331,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(404).send("Not found");
   } catch (e: any) {
     setSecurityHeadersVercel(res);
+    const msg = e?.message || String(e);
+    const stack = e?.stack || "";
+    const debug = String(process.env.ALLOW_DEBUG || "").toLowerCase() === "true";
     res.setHeader("content-type", "text/plain; charset=utf-8");
-    return res.status(500).send(`Internal Error: ${e?.message || String(e)}`);
+    return res
+      .status(500)
+      .send(debug ? `Internal Error: ${msg}\n\n${stack}` : `Internal Error: ${msg}`);
   }
 }

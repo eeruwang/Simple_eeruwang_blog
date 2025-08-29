@@ -25,6 +25,18 @@ export type PostRow = {
   updated_at: string;
 };
 
+// --- 배열에 .rows 게터(전역 호환) ---
+try {
+  const desc = Object.getOwnPropertyDescriptor(Array.prototype as any, "rows");
+  if (!desc) {
+    Object.defineProperty(Array.prototype, "rows", {
+      configurable: true,
+      enumerable: false,
+      get: function () { return this; }
+    });
+  }
+} catch { /* no-op */ }
+
 // 배열이면서 .rows 도 가진 타입 (양쪽 패턴 호환)
 type Rows<T> = T[] & { rows: T[] };
 
@@ -127,9 +139,17 @@ function pageOffset(page = 1, perPage = 10) {
   return { take, offset: (p - 1) * take };
 }
 
-// (옵션) 드라이버 확인용
+// 드라이버 확인용
 export function driverKind() {
   return looksLikeNeon ? "neon" : "pg";
+}
+
+// 객체/배열 혼용 결과를 배열로 보정
+export function asArrayRows<T>(res: any): T[] {
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.rows)) return res.rows;
+  if (res && Array.isArray(res.data)) return res.data;
+  return [];
 }
 
 // DB 헬스체크
