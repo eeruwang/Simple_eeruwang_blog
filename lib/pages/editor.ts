@@ -4,7 +4,7 @@
 export type EditorPageOptions = { version?: string };
 
 export function renderEditorHTML(opts: EditorPageOptions = {}): string {
-  const ver = opts.version || "v13"; // 캐시 버스터
+  const ver = opts.version || "v14"; // 캐시 버스터
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -15,10 +15,15 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
 <link rel="stylesheet" href="/assets/style.css">
 <style>
-  /* 기본: 숨김 */
+  /* 로그인 전 버튼/툴바 숨김 */
   .auth-only { display: none; }
-  /* 로그인 후: 확실히 보이게 */
   body.authed .auth-only { display: inline-flex !important; }
+
+  /* 외부 스타일이 레이아웃을 숨겨도 강제로 표시 */
+  .editor-layout { display: grid !important; grid-template-columns: 280px 1fr 260px; gap: 12px; }
+  @media (max-width: 900px) {
+    .editor-layout { grid-template-columns: 1fr; }
+  }
 
   /* 로그인 오버레이 */
   #lock{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1000}
@@ -164,6 +169,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
         const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor || (window.EditorApp && window.EditorApp.init));
         if (typeof init === "function") {
           await init();
+          document.body.classList.add("editor-ready"); // UI 표시 보조
           if (hint) hint.textContent = "";
         } else {
           if (hint) hint.textContent = "editor.js: init 함수를 찾을 수 없습니다.";
