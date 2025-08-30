@@ -6,11 +6,9 @@
 
 - 마크다운 기반 경량 블로그 & 인라인 미리보기
 - BibTeX 인용: 에디터에서 reference.bib 업로드 → 본문 내 [@key] or [-@key] 자동 치환
-- 스타일: harvard(기본) / chicago(author-date) / apa(lite)
-- 풋노트 다음에 Bibliography 섹션이 본문 컨테이너 안에 렌더되어 페이지 전환(샤락샤락)에 함께 포함
-- 제목은 볼드 문장, 항목은 문단 단위 + 행걸이 들여쓰기(숫자/불릿 없음)
+  - 스타일: harvard(기본) / chicago(author-date) / apa(lite)
+  - 풋노트 다음에 Bibliography 섹션이 본문 컨테이너 안에 포함.
 - 각주(footnote): 마우스오버 툴팁 + 하단 목록 자동 생성
-- 이미지 업로드/정렬: 단독 이미지 자동 중앙, figure/figcaption 기본 스타일
 - 부드러운 페이지 전환, 기본 SEO 메타, 태그·RSS, 커버 이미지
 - 에디터: 한 장짜리 HTML(+editor.js), 비밀번호 기반 간단 인증
 - 업로드: Vercel Blob 사용(이미지·BibTeX)
