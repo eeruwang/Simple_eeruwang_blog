@@ -123,6 +123,43 @@ export async function createDb(env: Env): Promise<DB> {
   }
 }
 
+// 트랜잭션 없이 단일 포스트 생성
+async function insertOne(db: DB, b: any) {
+  const tagsArr = Array.isArray(b.tags)
+    ? b.tags.map((x: any) => String(x).trim()).filter(Boolean)
+    : normTags(b.tags);
+
+  const baseSlug = slugifyForApi(b.title || "") || "post";
+  const desired  = String(b.slug || baseSlug);
+  const uniqueSlug = await ensureUniqueSlug(db, desired); // tx 없어도 OK
+
+  const published = !!b.published;
+  const publishedAtExplicit =
+    b.published_at && String(b.published_at).trim()
+      ? String(b.published_at)
+      : null;
+
+  const { rows: ins } = await db.query(
+    `insert into posts
+     (title, body_md, slug, tags, excerpt, is_page, published, published_at, cover_url)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     returning id, title, slug, published, published_at`,
+    [
+      b.title || "(untitled)",
+      b.body_md ?? "",
+      uniqueSlug,
+      tagsArr, // text[]
+      b.excerpt ?? "",
+      !!b.is_page,
+      published,
+      publishedAtExplicit, // null이면 트리거가 처리
+      b.cover_url ?? null,
+    ]
+  );
+  return ins[0];
+}
+
+
 /* ===== 슬러그 유니크 보장 ===== */
 async function ensureUniqueSlug(
   db: Pick<DB, "query">,
@@ -169,15 +206,23 @@ export async function handleEditorApi(
 
   try {
     /* 미리보기: POST /api/posts/preview  (MD → 안전한 HTML) */
-    if (request.method === "POST" && isPreview) {
+    /* 생성: POST /api/posts (단건/배열 허용) */
+    if (request.method === "POST" && isPostsRoot) {
       if (!requireEditor(request, env))
         return json({ error: "unauthorized" }, 401);
 
-      const { md } = await request.json().catch(() => ({ md: "" }));
-      const src = typeof md === "string" ? md : "";
-      const html = mdToSafeHtml(src);
-      return json({ html });
+      const body = await request.json().catch(() => ({}));
+      const inputs = Array.isArray(body) ? body : [body];
+
+      // tx 없어도 동작하도록 루프삽입
+      const created = [];
+      for (const b of inputs) {
+        const row = await insertOne(db, b);
+        created.push(row);
+      }
+      return json({ ok: true, created });
     }
+
 
     /* 목록: GET /api/posts */
     if (request.method === "GET" && isPostsRoot) {
@@ -356,6 +401,7 @@ export async function handleEditorApi(
       );
       return json({ ok: true, updated: updated[0] });
     }
+    
 
     /* 삭제: DELETE /api/posts/:idOrSlug */
     if (request.method === "DELETE" && matchPost) {
@@ -383,4 +429,46 @@ export async function handleEditorApi(
       await db.end?.();
     } catch {}
   }
+}
+
+// 공개용: 테이블/트리거 생성
+export async function bootstrapDb(db: DB) {
+  await db.query(`
+    create table if not exists posts (
+      id serial primary key,
+      slug text unique not null,
+      title text not null,
+      body_md text not null default '',
+      cover_url text,
+      excerpt text,
+      tags text[],
+      is_page boolean not null default false,
+      published boolean not null default false,
+      published_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+  `);
+
+  // 업데이트 타임스탬프 + 최초 발행 시간 자동 부여
+  await db.query(`
+    create or replace function set_published_and_updated() returns trigger as $$
+    begin
+      if NEW.published = true and NEW.published_at is null then
+        NEW.published_at := now();
+      end if;
+      NEW.updated_at := now();
+      return NEW;
+    end;
+    $$ language plpgsql;
+  `);
+
+  await db.query(`
+    drop trigger if exists trg_posts_pub on posts;
+    create trigger trg_posts_pub
+    before insert or update on posts
+    for each row execute procedure set_published_and_updated();
+  `);
+
+  return { ok: true };
 }

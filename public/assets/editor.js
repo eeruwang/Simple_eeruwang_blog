@@ -97,6 +97,14 @@ export async function initEditor() {
     return mde;
   }
 
+  function computePermalink(slug) {
+    // 체크박스가 있으면 그 값, 없으면 state를 신뢰
+    const isPage = el.isPage ? !!el.isPage.checked : !!state.is_page;
+    const base = isPage ? "/" : "/post/";
+    const s = String(slug || "").trim();
+    return base + (s ? encodeURIComponent(s) : "");
+}
+
   function slugify(s) {
     return String(s || "")
       .trim()
@@ -106,7 +114,8 @@ export async function initEditor() {
       .replace(/-{2,}/g, "-") || "post";
   }
   function updatePermalink(slug) {
-    if (el.permalink) el.permalink.textContent = "Permalink: /post/" + encodeURIComponent(slug || "");
+    if (!el.permalink) return;
+    el.permalink.textContent = "Permalink: " + computePermalink(slug);
   }
   function readTagsInput(val) {
     if (Array.isArray(val)) return val.map(String);

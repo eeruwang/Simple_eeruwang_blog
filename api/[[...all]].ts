@@ -12,6 +12,8 @@ import { renderRSS } from "../routes/public/rss.js";
 import { renderEditorHTML } from "../lib/pages/editor.js";
 import { handleEditorApi } from "../lib/api/editor.js";
 import { pingDb } from "../lib/db/db.js";
+import { createDb, bootstrapDb } from "../lib/api/editor.js";
+
 
 /* Env 타입(간소화) */
 type Env = {
@@ -29,6 +31,11 @@ function getEditorTokenFromHeaders(req: VercelRequest): string {
     ""
   );
 }
+
+function getEditorToken(req: VercelRequest, url: URL): string {
+  return getEditorTokenFromHeaders(req) || (url.searchParams.get("token") || "");
+}
+
 
 /* ── 보안 헤더 & CORS 유틸 ── */
 function setSecurityHeadersVercel(res: VercelResponse) {
@@ -128,6 +135,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(500).json({ ok:false, error: String(e?.message||e) });
       }
     }
+    
+
+    // ── Admin: DB 부트스트랩 (posts 테이블/트리거 생성)
+    if (path === "/api/admin/bootstrap" && (req.method === "POST" || req.method === "GET")) {
+      const tok = getEditorToken(req, url);
+      if (!tok || tok !== env.EDITOR_PASSWORD) {
+        setSecurityHeadersVercel(res);
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      try {
+        const db = await createDb(env as any);
+        await bootstrapDb(db);
+        setSecurityHeadersVercel(res);
+        return res.status(200).json({ ok: true });
+      } catch (e: any) {
+        setSecurityHeadersVercel(res);
+        return res.status(500).json({ ok: false, error: String(e?.message || e) });
+      }
+    }
+
+    // ── Admin: 샘플 포스트 생성
+    if (path === "/api/admin/newpost" && (req.method === "POST" || req.method === "GET")) {
+      const tok = getEditorToken(req, url);
+      if (!tok || tok !== env.EDITOR_PASSWORD) {
+        setSecurityHeadersVercel(res);
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      try {
+        const db = await createDb(env as any);
+        // 존재 여부와 상관 없이 1개 삽입
+        const { rows: ins } = await db.query(
+          `insert into posts (title, slug, body_md, tags, excerpt, is_page, published)
+          values ($1,$2,$3,$4,$5,$6,$7)
+          returning id, slug`,
+          [
+            "Hello World",
+            `hello-${Date.now()}`,
+            "# Hello\n\n샘플 글입니다.",
+            ["test","sample"],
+            "샘플 글",
+            false,
+            true
+          ]
+        );
+        setSecurityHeadersVercel(res);
+        return res.status(200).json({ ok: true, id: ins[0]?.id, slug: ins[0]?.slug });
+      } catch (e: any) {
+        setSecurityHeadersVercel(res);
+        return res.status(500).json({ ok: false, error: String(e?.message || e) });
+      }
+    }
+
 
     // 1) 에디터 키 체크
     if (path === "/api/check-key" && req.method === "GET") {
