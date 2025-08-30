@@ -2,6 +2,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap');
 @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css');
 
+@font-face{
+  font-family: "InconsolataNF";
+  src: url("/assets/InconsolataNerdFont-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+
 /* ===== CSS Vars ===== */
 :root{
   --text:#111; --muted:#666; --line:#eee;
@@ -14,6 +23,7 @@
   --side-w:280px;
   --shell-max: calc(var(--page-max) + var(--side-w));
   --tag-accent: #111;
+  --code-font: "InconsolataNF", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 
   /* 배너 사이즈 */
   --banner-w: 220px;
@@ -149,6 +159,43 @@ footer{color:var(--muted);margin:40px 0 20px;text-align:center}
   text-decoration:none !important;
   background:none !important;
 }
+
+/* ===== Markdown code styling ===== */
+/* 인라인 코드 */
+#content code,
+article .content code,
+article code,
+kbd, samp{
+  font-family: var(--code-font) !important;
+  font-size: .95em;                 /* 본문보다 약간 작게 */
+  font-variant-ligatures: none;
+}
+
+/* 코드 블록 */
+#content pre,
+article .content pre,
+article pre{
+  font-family: var(--code-font) !important;
+  font-size: .90em;                 /* 블록은 더 살짝 작게 */
+  line-height: 1.6;
+  tab-size: 2; -moz-tab-size: 2;
+}
+
+/* pre 안의 code는 부모 크기/폰트를 그대로 상속 */
+#content pre code,
+article .content pre code,
+article pre code{
+  font: inherit !important;
+}
+
+/* 에디터(작성 영역)에도 동일 폰트 적용 – 선택 사항 */
+.editor-page .CodeMirror{
+  font-family: var(--code-font) !important;
+  font-size: 13px;                  /* 취향에 맞게 */
+  line-height: 1.6;
+}
+
+
 
 /* ===== Footnotes ===== */
 .footnote-ref{ position:relative; display:inline-block; }
