@@ -224,13 +224,25 @@ export async function initEditor() {
     return d ? (t ? `${d}T${t}:00` : `${d}T00:00:00`) : new Date().toISOString();
   }
 
+  // 인코딩 없이, 표시/링크 모두 '한글 그대로'
   function computePermalink(slug) {
     const isPage = el.isPage ? !!el.isPage.checked : !!state.is_page;
-    const base = isPage ? "/" : "/post/"; const s = String(slug || "").trim();
-    return base + (s ? encodeURIComponent(s) : "");
+    const base = isPage ? "/" : "/post/";
+    const s = String(slug || "").trim();
+    return base + (s ? s : "");
   }
   function updatePermalink(slug) {
-    el.permalink && (el.permalink.textContent = "Permalink: " + computePermalink(slug));
+    if (!el.permalink) return;
+    const url = computePermalink(slug);
+    // a.href 대신 setAttribute('href', ...) 를 써야 퍼센트 인코딩으로 변환되지 않습니다.
+    if (el.permalink.tagName === "A") {
+      el.permalink.setAttribute("href", url);
+      el.permalink.textContent = "Permalink: " + url;
+    } else {
+      const a = el.permalink.querySelector?.("a");
+      if (a) { a.setAttribute("href", url); a.textContent = url; }
+      el.permalink.textContent = "Permalink: " + url;
+    }
   }
 
   function readTagsInput(val) {
