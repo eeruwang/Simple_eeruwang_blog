@@ -647,63 +647,50 @@ export const EDITOR_CLIENT_JS: string = `
     console.warn("[editor] attach UI missing");
   }
 
-  // ===== BIBTEX 업로드 (버튼 하나만, 임시 file input) =====
-  document.addEventListener('click', async (e) => {
-    const btn = (e.target as Element | null)?.closest?.('#bibtexBtn');
-    if (!btn) return;
+  // ===== BIBTEX 업로드 (reference.bib로 항상 덮어쓰기) =====
+  const bibtexBtn  = document.getElementById('bibtexBtn');
+  const bibtexFile = document.getElementById('bibtexFile');
 
-    if (!STATE.key) { setHint("Sign in first"); alert("Sign in first"); return; }
+  if (bibtexBtn && bibtexFile) {
+    bibtexBtn.addEventListener('click', () => {
+      if (!STATE.key) { alert('Sign in first'); return; }
+      bibtexFile.value = '';
+      bibtexFile.click();
+    });
 
-    // 보이지 않는 임시 input 생성
-    const inp = document.createElement('input');
-    inp.type = 'file';
-    inp.accept = '.bib,text/plain';
-    // 화면에 전혀 보이지 않게
-    inp.style.position = 'fixed';
-    inp.style.left = '-9999px';
-    inp.style.width = '1px';
-    inp.style.height = '1px';
-    inp.style.opacity = '0';
-    document.body.appendChild(inp);
+    bibtexFile.addEventListener('change', async () => {
+      const f = (bibtexFile.files && bibtexFile.files[0]) || null;
+      if (!f) return;
 
-    inp.addEventListener('change', async () => {
+      const fd = new FormData();
+      fd.append('file', f, 'reference.bib'); // 파일명 고정
+      fd.append('name', 'reference.bib');    // 서버가 이 이름을 우선 사용
+
       try {
-        const f = inp.files?.[0];
-        if (!f) return;
-
-        const fd = new FormData();
-        // 이름을 reference.bib로 고정하고 언제나 덮어쓰기
-        fd.append('file', f, 'reference.bib');
-        fd.append('name', 'reference.bib');
-
         setHint('Uploading reference.bib...');
         const res = await fetch('/api/upload?overwrite=1', {
           method: 'POST',
-          headers: { 'x-editor-token': STATE.key },
+          headers: { 'x-editor-token': STATE.key }, // multipart라 content-type 자동
           body: fd
         });
-        const j = await res.json().catch(() => ({} as any));
-
+        const j = await res.json().catch(()=> ({}));
         if (!res.ok || j?.ok !== true) {
           setHint('BIBTEX upload error');
           alert('업로드 실패: ' + (j?.error || res.status));
           return;
         }
         setHint('BIBTEX uploaded');
-        // 필요하면 j.url / j.path 활용 가능
-      } catch (err) {
-        console.error(err);
+        // 필요하면 j.url / j.path 활용
+      } catch (e) {
+        console.error(e);
         setHint('BIBTEX upload error');
         alert('업로드 에러');
-      } finally {
-        // 항상 DOM에서 제거(화면에 안 남음)
-        document.body.removeChild(inp);
       }
-    }, { once: true });
+    });
+  } else {
+    console.warn('[editor] bibtex UI missing');
+  }
 
-    // 사용자 클릭 제스처 안에서 즉시 실행 → iOS/Safari 호환
-    inp.click();
-  });
 
 
     // 매 클릭마다 1회성 change 핸들러 부착
