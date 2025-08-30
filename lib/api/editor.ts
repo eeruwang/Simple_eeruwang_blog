@@ -7,16 +7,19 @@
 // - 스키마 자동 부트스트랩(테이블 + 트리거)
 // - 인스턴스 최초 1회 스키마 보증 + 목록 0건/스키마없음 자동 복구
 // - 발행 시 published_at 자동 채움(신규/수정 모두)
+// - ✅ 한글 포함 슬러그 지원(정규화 + 유니크 보장)
 
 import { Pool } from "pg";
 import { put } from "@vercel/blob";
 import { Buffer } from "node:buffer";
+import { normalizeSlug } from "../../lib/slug.js";
 
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
 export type Env = {
   DATABASE_URL?: string;
+  NEON_DATABASE_URL?: string;
   EDITOR_PASSWORD?: string;
   SITE_URL?: string;
   BLOB_READ_WRITE_TOKEN?: string;
@@ -59,15 +62,9 @@ function requireEditor(request: Request, env: Env): boolean {
   return got === want;
 }
 
+// ✅ 서버 사이드 슬러그 표준화: 한글 보존 + 허용셋 필터 + 공백→하이픈
 function slugifyForApi(s: string): string {
-  const base = (s || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-  return base || "post";
+  return normalizeSlug(s) || "post";
 }
 
 function normTags(t: unknown): string[] {
@@ -82,8 +79,8 @@ function normTags(t: unknown): string[] {
 }
 
 async function ensureUniqueSlug(q: { query: DB["query"] }, desired: string): Promise<string> {
-  let base = (desired || "post").trim();
-  if (!base) base = "post";
+  // 입력값을 반드시 normalize 해 유니크 판단 기준을 일치시킵니다.
+  let base = slugifyForApi(desired || "post");
   let s = base;
   let n = 0;
   while (n < 500) {
@@ -127,7 +124,13 @@ function mdToSafeHtml(md: string): string {
 // ─────────────────────────────────────────────────────────────
 export function createDb(env: Env): DB {
   if (!pool) {
-    const url = env.DATABASE_URL || process.env.DATABASE_URL || "";
+    // ✅ DB URL 해석 통일(DATABASE_URL 우선, 없으면 NEON_DATABASE_URL)
+    const url =
+      env.DATABASE_URL ||
+      process.env.DATABASE_URL ||
+      env.NEON_DATABASE_URL ||
+      (process.env as any).NEON_DATABASE_URL ||
+      "";
     if (!url) throw new Error("DATABASE_URL is not set");
     pool = new Pool({ connectionString: url, max: 5 });
   }
@@ -328,14 +331,17 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       return json({ item: rows[0] });
     }
 
-    // 단건 by slug
+    // ✅ 단건 by slug (공백/대소문자 차이 완화, 한글은 그대로 일치)
     if (slugQ) {
+      const slugNorm = slugifyForApi(String(slugQ)); // URL에서 온 값도 표준화
       const { rows } = await db.query(
         `select id, title, body_md, slug, tags, excerpt,
                 is_page, published, published_at, cover_url,
                 created_at, updated_at
-         from posts where slug=$1 limit 1`,
-        [slugQ]
+         from posts
+         where lower(slug) = lower(trim($1))
+         limit 1`,
+        [slugNorm]
       );
       if (!rows.length) return json({ error: "not found" }, 404);
       return json({ item: rows[0] });
@@ -396,8 +402,9 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
             ? b.tags.map((x: any) => String(x).trim()).filter(Boolean)
             : normTags(b.tags);
 
-          const baseSlug = slugifyForApi(b.title || "") || "post";
-          const desired = String(b.slug || baseSlug).trim().toLowerCase();
+          // ✅ 타이틀/입력 슬러그 모두 표준화 후 유니크 확보(한글 보존)
+          const baseSlug = slugifyForApi(b.title || "");
+          const desired = slugifyForApi(String(b.slug || baseSlug));
           const uniqueSlug = await ensureUniqueSlug({ query }, desired);
 
           const published = !!b.published;
@@ -441,9 +448,6 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     }
   }
 
-
-  // 읽기: GET /api/posts/:id  → 위 GET 블록에서 처리
-
   // 수정: PUT/PATCH /api/posts/:id
   if ((request.method === "PUT" || request.method === "PATCH") && pathname.startsWith("/api/posts/")) {
     if (!requireEditor(request, env)) return json({ error: "unauthorized" }, 401);
@@ -465,10 +469,13 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         if (!curRows.length) throw new Error("not found");
         const cur = curRows[0];
 
-        // slug 유니크
+        // ✅ slug 유니크 (입력값은 normalize 후 비교/적용)
         let nextSlug = cur.slug as string;
-        if (typeof body.slug === "string" && body.slug.trim() && body.slug !== nextSlug) {
-          nextSlug = await ensureUniqueSlug({ query }, String(body.slug));
+        if (typeof body.slug === "string" && body.slug.trim()) {
+          const normalized = slugifyForApi(String(body.slug));
+          if (normalized !== nextSlug) {
+            nextSlug = await ensureUniqueSlug({ query }, normalized);
+          }
         }
 
         // tags 정규화
@@ -545,8 +552,6 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       return json({ error: msg }, code);
     }
   }
-
-
 
   // 삭제: DELETE /api/posts/:id
   if (request.method === "DELETE" && pathname.startsWith("/api/posts/")) {

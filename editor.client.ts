@@ -1,8 +1,13 @@
 // src/editor.client.ts
+import { normalizeSlug } from "./lib/slug";
+
 export const EDITOR_CLIENT_JS: string = `
 // ===== editor.js (browser) =====
 (() => {
   console.log("[editor] loaded");
+
+  // Bring server-side normalizeSlug into browser scope
+  const normalizeSlug = ${normalizeSlug.toString()};
 
   let STATE = {
     key: "",
@@ -37,24 +42,6 @@ export const EDITOR_CLIENT_JS: string = `
   });
   window._mde = mde;
 
-  // --- korean-romanization 동적 로드 (esm.sh) ---
-  (async () => {
-    if (typeof window.__romanize === "function") return;
-    try {
-      const mod = await import("https://esm.sh/korean-romanization");
-      const romanize = (mod && (mod.romanize || mod.default));
-      if (typeof romanize === "function") {
-        window.__romanize = romanize;
-        window.dispatchEvent(new CustomEvent("romanize-loaded"));
-        console.log("[editor] romanization ready");
-      } else {
-        console.warn("[editor] romanization module has no function export");
-      }
-    } catch (e) {
-      console.warn("[editor] romanization load failed:", e);
-    }
-  })();
-
   // ===== 공통 유틸 =====
   function headers(){ return { "content-type":"application/json", "x-editor-token": STATE.key }; }
   function tagsArr(){
@@ -84,29 +71,26 @@ export const EDITOR_CLIENT_JS: string = `
     const body  = (mde.value() || "").replace(/\\s+/g, "");
     return title.length > 0 || body.length > 0;
   }
+
+  // 한글 보존 슬러그 (서버 normalizeSlug와 동일 동작)
   function slugify(s){
-    const src = String(s||"");
-    const base = (typeof window.__romanize === "function" ? window.__romanize(src) : src);
-    const pattern = (typeof window.__romanize === "function")
-      ? /[^\\w\\s-]/g
-      : /[^\\p{L}\\p{N}\\s-]/gu;
-    return base
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(pattern,"")
-      .trim()
-      .replace(/\\s+/g,"-")
-      .replace(/-+/g,"-")
-      .replace(/^-|-$/g,"")
-      .slice(0,80);
+    return normalizeSlug(String(s||""));
   }
+
   function updatePermalink(){
     if (!$permalink) return;
     const raw  = ($("#slug").value || "").trim();
-    const slug = raw ? raw.toLowerCase() : slugify($("#title").value);
+    const base = raw || $("#title").value || "";
+    const slug = slugify(base);
+    const enc  = encodeURIComponent(slug);
     const isPage = !!($isPage && $isPage.checked);
-    $permalink.textContent = "Permalink: " + (isPage ? "/" + slug : "/post/" + slug);
+    const path = isPage ? ("/" + enc) : ("/post/" + enc);
+    $permalink.textContent = "Permalink: " + path;
+    if (typeof $permalink.setAttribute === "function") {
+      try { $permalink.setAttribute("href", path); } catch {}
+    }
   }
+
   function pickDateField(f) {
     return f.published_at || f.Published_at || f.UpdatedAt || f.CreatedAt || "";
   }
@@ -123,7 +107,6 @@ export const EDITOR_CLIENT_JS: string = `
       .replace(/&/g,"&amp;").replace(/</g,"&lt;")
       .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
   }
-
 
   function setStatus(s){ STATE.status=s; if($status) $status.textContent=s; }
   function setHint(t){
@@ -180,6 +163,7 @@ export const EDITOR_CLIENT_JS: string = `
       STATE.slugTouched = false;
       STATE.suspendAutosave = false;
       updatePermalink();
+      setActiveRow(null);
     };
   }
 
@@ -199,14 +183,6 @@ export const EDITOR_CLIENT_JS: string = `
     });
   }
   if ($isPage) $isPage.addEventListener("change", updatePermalink);
-  window.addEventListener("romanize-loaded", () => {
-    const titleNow = ($("#title").value || "");
-    if (!titleNow) return;
-    if (!STATE.slugTouched) {
-      $("#slug").value = slugify(titleNow);
-      updatePermalink();
-    }
-  });
 
   // ===== 저장/발행/삭제 =====
   const btnSave = document.getElementById("save");
@@ -259,10 +235,14 @@ export const EDITOR_CLIENT_JS: string = `
       published_at = toIsoLocal(pd, pt);
     }
 
+    const inputSlug = ($("#slug").value || "").trim();
+    const titleBase = ($("#title").value || "").trim();
+    const finalSlug = slugify(inputSlug || titleBase);
+
     const payload = {
-      title: ($("#title").value || "").trim() || "(untitled)",
+      title: titleBase || "(untitled)",
       body_md: mde.value(),
-      slug: ($("#slug").value || "").trim().toLowerCase() || slugify($("#title").value),
+      slug: finalSlug,
       tags: tagsArr(),
       excerpt: ($("#excerpt")?.value || "").trim(),
       is_page: !!($isPage && $isPage.checked),
@@ -332,7 +312,6 @@ export const EDITOR_CLIENT_JS: string = `
   const filterSelect = $("#filterSelect");
   const savedViews = $("#savedViews");
   const saveViewBtn = $("#saveViewBtn");
-  const side = document.querySelector('.editor-side');
 
   const debounce = (fn, ms=300)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms)}};
   const store = {
@@ -387,7 +366,6 @@ export const EDITOR_CLIENT_JS: string = `
   document.getElementById('sideBackdrop')?.addEventListener('click', () => setMobileOpen(false));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMobileOpen(false); });
 
-
   let allPosts = [];   // [{ fields: {...} }]
   let filtered = [];
   let rowH = 120;
@@ -418,10 +396,9 @@ export const EDITOR_CLIENT_JS: string = `
     return slug ? base + encodeURIComponent(slug) : "";
   }
   function summarize(s, n = 160){
-    const t = String(s || "").replace(/\s+/g, " ").trim();
+    const t = String(s || "").replace(/\\s+/g, " ").trim();
     return t.length > n ? t.slice(0, n - 1) + "…" : t;
   }
-
 
   function renderVirtual(){
     if(!$list) return;
@@ -447,9 +424,10 @@ export const EDITOR_CLIENT_JS: string = `
         const excerpt = f.excerpt || "";
         const tagsArr = Array.isArray(f.tags) ? f.tags
           : (f.tags ? String(f.tags).split(",").map(s=>s.trim()).filter(Boolean) : []);
+        const activeCls = (String(id) === String(STATE.currentId)) ? " active" : "";
 
         return \`
-          <div class="virtual-row" data-id="\${id}" role="option" aria-label="\${escapeHtml(title)}">
+          <div class="virtual-row\${activeCls}" data-id="\${id}" role="option" aria-label="\${escapeHtml(title)}">
             <div class="vr-title"><strong>\${escapeHtml(title)}</strong></div>
             <div class="vr-meta">\${escapeHtml(dateStr)} \${dateStr ? " • " : ""}\${status}</div>
             \${link ? \`<div class="vr-link">\${escapeHtml(link)}</div>\` : \`\`}
@@ -461,6 +439,13 @@ export const EDITOR_CLIENT_JS: string = `
     \`;
   }
 
+  function setActiveRow(id){
+    if(!$list) return;
+    $list.querySelectorAll('.virtual-row.active').forEach(el => el.classList.remove('active'));
+    if (id==null) return;
+    const row = $list.querySelector('.virtual-row[data-id="'+id+'"]');
+    if (row) row.classList.add('active');
+  }
 
   $list?.addEventListener('scroll', debounce(renderVirtual, 16));
   $list?.addEventListener('click', (e)=>{
@@ -516,6 +501,7 @@ export const EDITOR_CLIENT_JS: string = `
     refreshSavedViews();
     rebuildFiltered();
     updatePermalink();
+    setActiveRow(STATE.currentId);
   }
 
   // ===== 열기 =====
@@ -555,6 +541,7 @@ export const EDITOR_CLIENT_JS: string = `
     STATE.suspendAutosave = false;
     updatePermalink();
     setHint("Loaded");
+    setActiveRow(id);
     renderPreviewDeb();
     buildTOCDeb();
     updateMiniMapDeb();
@@ -565,7 +552,7 @@ export const EDITOR_CLIENT_JS: string = `
   async function ensureDraftId() {
     if (STATE.currentId) return STATE.currentId;
     const title = ($("#title").value || "").trim() || "(untitled)";
-    const slug  = ($("#slug").value || "").trim() || slugify(title);
+    const slug  = slugify(($("#slug").value || "").trim() || title);
     const payload = {
       title, slug,
       body_md: mde.value(),
@@ -589,6 +576,7 @@ export const EDITOR_CLIENT_JS: string = `
     if (!id) throw new Error("draft id not returned");
     STATE.currentId = id;
     window.currentPostId = id;
+    setActiveRow(id);
     return id;
   }
 
@@ -754,16 +742,13 @@ export const EDITOR_CLIENT_JS: string = `
     }
   });
 
+  // ===== 로그아웃 =====
+  document.getElementById("signout")?.addEventListener("click", () => {
+    try { sessionStorage.removeItem("editor_key"); } catch {}
+    STATE.key = "";
+    document.body.removeAttribute("data-auth");
+    setHint("Signed out");
+  });
+
 })();
-
-// editor.client.ts 하단 아무 데나
-const signout = document.getElementById("signout");
-signout?.addEventListener("click", () => {
-  sessionStorage.removeItem("editor_key");
-  STATE.key = "";
-  document.body.removeAttribute("data-auth");
-  // 폼/상태 초기화는 필요에 따라 추가
-});
-
-
 `;
