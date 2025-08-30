@@ -201,3 +201,46 @@ export async function getBySlug(slug: string): Promise<PostRow | null> {
   );
   return rows[0] || null;
 }
+
+/** 페이지 전용: slug로 조회 (published만, 옵션으로 draft 포함) */
+export async function getPageBySlug(
+  slug: string,
+  opts?: { includeDraft?: boolean }
+): Promise<PostRow | null> {
+  const includeDraft = !!opts?.includeDraft;
+  const rows = await query<PostRow>(
+    `
+    select *
+    from posts
+    where slug = $1
+      and coalesce(is_page, false) = true
+      and (published = true or $2::boolean = true)
+    order by published_at desc nulls last, updated_at desc nulls last, id desc
+    limit 1
+    `,
+    [slug, includeDraft]
+  );
+  return rows[0] || null;
+}
+
+/** (선택) 포스트 전용 */
+export async function getPostBySlug(
+  slug: string,
+  opts?: { includeDraft?: boolean }
+): Promise<PostRow | null> {
+  const includeDraft = !!opts?.includeDraft;
+  const rows = await query<PostRow>(
+    `
+    select *
+    from posts
+    where slug = $1
+      and coalesce(is_page, false) = false
+      and (published = true or $2::boolean = true)
+    order by published_at desc nulls last, updated_at desc nulls last, id desc
+    limit 1
+    `,
+    [slug, includeDraft]
+  );
+  return rows[0] || null;
+}
+

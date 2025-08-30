@@ -4,9 +4,8 @@
  * - views/pageview.js 의 renderPostPage 로 렌더
  */
 
-import { getBySlug } from "../../lib/db/db.js";
+import { getPageBySlug } from "../../lib/db/db.js";
 import { renderPostPage } from "../../views/pageview.js";
-import { sanitize } from "../../lib/sanitize.js";
 
 type Env = Record<string, unknown>;
 
@@ -20,7 +19,7 @@ export async function renderPage(
 
   const debug = !!searchParams?.get?.("debug");
 
-  const rec = await getBySlug(s);
+  const rec = await getPageBySlug(s);
   if (!rec || !rec.is_page) {
     return new Response("Not found", { status: 404 });
   }
