@@ -393,7 +393,24 @@ body.editor-page.authed #lock{display:none}
 
 /* 에디터/프리뷰 폭을 본문 폭에 맞춤 */
 .editor{ max-width:var(--page-max); width:100%; margin:0 auto; }
-.preview-pane > iframe{ display:block; width:100%; max-width:var(--page-max); margin:0 auto; height:100%; }
+/* 교체본: 보이는 높이 보장(반반 레이아웃에서도 즉시 표시) */
+.preview-pane { 
+  border-left:1px solid #eee;
+  min-height:60vh;           /* 부모 자체 높이 */
+}
+.preview-pane > iframe{
+  display:block;
+  width:100%;
+  max-width:var(--page-max);
+  margin:0 auto;
+  height:60vh;               /* iframe 고정 높이 */
+  min-height:320px;
+  border:0;
+}
+@media (max-width:900px){
+  .preview-pane{ min-height:50vh; }
+  .preview-pane > iframe{ height:50vh; }
+}
 
 /* Layout */
 .editor-layout{

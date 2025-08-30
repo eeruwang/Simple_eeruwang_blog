@@ -667,10 +667,9 @@ export const EDITOR_CLIENT_JS: string = `
   const renderPreviewDeb = debounce(renderPreview, 250);
 
   $previewToggleBtn?.addEventListener('click', ()=>{
-    const split = document.querySelector('.editor-split');
-    const on = split.classList.toggle('show-preview');
-    if ($previewPane) $previewPane.hidden = !on;
-    $previewToggleBtn.setAttribute('aria-pressed', on?'true':'false');
+    const split = document.querySelector('.editor-split') as HTMLElement | null;
+    const on = !!split?.classList.toggle('show-preview');
+    if ($previewPane) $previewPane.hidden = !on;   // on일 때 hidden 제거
     if (on) renderPreview();
   });
 
