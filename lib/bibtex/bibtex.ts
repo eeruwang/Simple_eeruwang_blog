@@ -492,8 +492,8 @@ function generateBibliographyHtml(entries: BibEntry[], style = "harvard"): strin
   const items = entries.map(e => `<li id="ref-${esc(e.citationKey)}">${fmt(e)}</li>`).join("\n");
 
   return `
-<section class="bibliography footnotes" role="doc-bibliography" aria-label="Bibliography">
-  <h2 id="bib-h">Bibliography</h2>
+  <section class="bibliography footnotes" role="doc-bibliography" aria-label="Bibliography">
+  <h3 id="bib-h"><strong>Bibliography<strong></h3>
   <ul class="bib-list">
     ${items}
   </ul>
