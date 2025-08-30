@@ -37,9 +37,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
   <!-- 상단 헤더 -->
   <header class="editor-header">
     <button class="auth-only" id="new">New</button>
-    <button type="button" class="auth-only" id="bibtexBtn" title="Upload reference.bib">BIBTEX</button>
-    <input id="bibtexFile" type="file" accept=".bib,text/plain" style="position:fixed;left:-9999px;width:1px;height:1px;opacity:0" />
-
     <!-- ↓ display:none 쓰지 않기 -->
     <span id="hint" class="muted" aria-live="polite"></span>
     <a href="/" class="link-back" data-back>← 목록</a>
@@ -91,6 +88,9 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
                 <button class="auth-only" id="delete">Delete</button>
                 <button class="auth-only" id="attachBtn">이미지</button>
                 <input id="attach" type="file" multiple accept="image/*" class="hidden" />
+                <button type="button" class="auth-only" id="bibtexBtn" title="Upload reference.bib">BIBTEX</button>
+                <input id="bibtexFile" type="file" accept=".bib,text/plain" class="hidden" />
+
               </div>
             </div>
 
