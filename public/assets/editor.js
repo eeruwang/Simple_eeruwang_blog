@@ -134,6 +134,21 @@ export async function initEditor() {
       .replace(/&/g,"&amp;").replace(/</g,"&lt;")
       .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
   }
+  // YYYY-MM-DD HH:MM (24h) 형태로 간단 포맷
+  function formatDateTime(isoLike) {
+    if (!isoLike) return "";
+    const dt = new Date(isoLike);
+    if (isNaN(dt.getTime())) return "";
+    const pad = (n) => String(n).padStart(2, "0");
+    return (
+      dt.getFullYear() + "-" +
+      pad(dt.getMonth() + 1) + "-" +
+      pad(dt.getDate()) + " " +
+      pad(dt.getHours()) + ":" +
+      pad(dt.getMinutes())
+    );
+  }
+
 
   // ----- 상태 -----
   let state = { id: null, slug: "", is_page: false, published: false };
@@ -191,49 +206,74 @@ export async function initEditor() {
   }
 
   function renderList() {
-    if (!el.list) return;
-    const q = (el.search && el.search.value ? el.search.value : "").toLowerCase();
-    const filter = el.filter ? el.filter.value : "all";
+  if (!el.list) return;
+  const q = (el.search && el.search.value ? el.search.value : "").toLowerCase();
+  const filter = el.filter ? el.filter.value : "all";
 
-    const filtered = lastList.filter((r) => {
-      if (filter === "published" && !r.published) return false;
-      if (filter === "draft" && r.published) return false;
-      if (filter === "page" && !r.is_page) return false;
-      if (filter === "post" && r.is_page) return false;
-      if (!q) return true;
-      const hay = (r.title || "") + " " + ((r.tags || []).join(" "));
-      return hay.toLowerCase().includes(q);
-    });
+  const filtered = lastList.filter((r) => {
+    if (filter === "published" && !r.published) return false;
+    if (filter === "draft" && r.published) return false;
+    if (filter === "page" && !r.is_page) return false;
+    if (filter === "post" && r.is_page) return false;
+    if (!q) return true;
+    const hay = (r.title || "") + " " + ((r.tags || []).join(" "));
+    return hay.toLowerCase().includes(q);
+  });
 
-    el.list.innerHTML = filtered.map(r => {
-      const dateStr = r.published_at || r.updated_at || r.created_at || "";
-      return '<div class="virtual-row" role="option" data-id="' + r.id + '" aria-selected="false" tabindex="0">' +
-               '<div class="row" style="gap:8px;align-items:center">' +
-                 '<strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(r.title || "(untitled)") + '</strong>' +
-                 '<span style="font-size:12px;opacity:.7">' + escapeHtml(r.slug || "") + '</span>' +
-               '</div>' +
-               '<div class="meta" style="font-size:12px;opacity:.7">' + escapeHtml(dateStr) + '</div>' +
-             '</div>';
-    }).join("");
+  el.list.innerHTML = filtered.map((r) => {
+    const dateStr = formatDateTime(r.published_at || r.updated_at || r.created_at);
+    const status = r.published ? "published" : "draft";
+    const badgeStyle = r.published
+      ? "background:#e6f4ea;color:#0f5132"   // 연녹/진녹
+      : "background:#fdecef;color:#842029";  // 연분홍/진빨강
 
-    el.list.querySelectorAll(".virtual-row").forEach((row) => {
-      row.addEventListener("click", async () => {
-        const id = Number(row.getAttribute("data-id") || "0");
-        if (!id) return;
-        try {
-          const j = await apiGet("/api/posts/" + id);
-          const rec = asItem(j);             // ✅ {item} 대응
-          useRecord(rec);
-        } catch (e) {
-          console.error(e);
-          setHint("항목 로드 실패");
+    const tagsArr = Array.isArray(r.tags)
+      ? r.tags
+      : (r.tags ? String(r.tags).split(",").map(s=>s.trim()).filter(Boolean) : []);
+
+    const tagsHtml = tagsArr.map(t =>
+      `<span class="tag" style="font-size:11px;padding:2px 6px;border-radius:6px;background:#f1f5f9">${escapeHtml(t)}</span>`
+    ).join("");
+
+    return `
+      <div class="virtual-row" role="option" data-id="${r.id}" aria-selected="false" tabindex="0">
+        <div class="row" style="display:flex;gap:10px;align-items:center">
+          <strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${escapeHtml(r.title || "(untitled)")}
+          </strong>
+          <span style="font-size:12px;opacity:.7">${escapeHtml(r.slug || "")}</span>
+          <div class="meta" style="margin-left:auto;display:flex;gap:8px;align-items:center;font-size:12px;">
+            <span class="badge" style="padding:2px 8px;border-radius:999px;${badgeStyle}">${status}</span>
+            <span>${escapeHtml(dateStr)}</span>
+          </div>
+        </div>
+        ${tagsArr.length
+          ? `<div class="tags" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${tagsHtml}</div>`
+          : ""
         }
-      });
-      row.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); }
-      });
+      </div>`;
+  }).join("");
+
+  // 이벤트 바인딩(유지)
+  el.list.querySelectorAll(".virtual-row").forEach((row) => {
+    row.addEventListener("click", async () => {
+      const id = Number(row.getAttribute("data-id") || "0");
+      if (!id) return;
+      try {
+        const j = await apiGet("/api/posts/" + id);
+        const rec = asItem(j);
+        useRecord(rec);
+      } catch (e) {
+        console.error(e);
+        setHint("항목 로드 실패");
+      }
     });
-  }
+    row.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); }
+    });
+  });
+}
+
 
   function getPublishAtFromInputs() {
     const d = (el.pubdate && el.pubdate.value) ? el.pubdate.value : "";
