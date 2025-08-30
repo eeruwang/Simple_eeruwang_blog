@@ -170,7 +170,7 @@ export async function initEditor() {
   // ----- 목록 -----
   let lastList = [];
   async function loadList() {
-    setHint("목록 불러오는 중…");
+    // setHint("목록 불러오는 중…");
     try {
       const j = await apiGet("/api/posts?limit=1000&offset=0");
       lastList = Array.isArray(j.list) ? j.list : [];
@@ -351,6 +351,10 @@ export async function initEditor() {
     }
   });
   el.slug && el.slug.addEventListener("input", () => updatePermalink(el.slug.value));
+  el.isPage && el.isPage.addEventListener("change", () => {
+    const s = el.slug ? el.slug.value : (state.slug || "");
+    updatePermalink(s);
+  });
   el.publishedToggle && el.publishedToggle.addEventListener("change", () => {
     if (el.status) el.status.textContent = el.publishedToggle.checked ? "published" : "draft";
   });

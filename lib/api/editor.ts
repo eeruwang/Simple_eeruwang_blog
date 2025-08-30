@@ -205,25 +205,6 @@ export async function handleEditorApi(
   }
 
   try {
-    /* 미리보기: POST /api/posts/preview  (MD → 안전한 HTML) */
-    /* 생성: POST /api/posts (단건/배열 허용) */
-    if (request.method === "POST" && isPostsRoot) {
-      if (!requireEditor(request, env))
-        return json({ error: "unauthorized" }, 401);
-
-      const body = await request.json().catch(() => ({}));
-      const inputs = Array.isArray(body) ? body : [body];
-
-      // tx 없어도 동작하도록 루프삽입
-      const created = [];
-      for (const b of inputs) {
-        const row = await insertOne(db, b);
-        created.push(row);
-      }
-      return json({ ok: true, created });
-    }
-
-
     /* 목록: GET /api/posts */
     if (request.method === "GET" && isPostsRoot) {
       const limit = Math.min(
