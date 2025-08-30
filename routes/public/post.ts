@@ -87,26 +87,6 @@ export async function renderPost(
   const rec = await fetchPublicPostBySlug(env, s);
   if (!rec) return new Response("Not found", { status: 404 });
 
-  // ★★★ BibTeX 설정 해석(env 우선, 없으면 DB) + 본문 인용 치환
-  let bibHtml = "";
-  try {
-    const db = createDb(env as any);
-    const { url: bibUrl, style } = await resolveBibtexConfig(env as any, db);
-
-    if (bibUrl) {
-      const { content, bibliographyHtml } = await processBib(rec.body_md || "", bibUrl, {
-        style: style || "harvard",
-        usageHelp: true,
-        ibid: true,
-      });
-      rec.body_md = content;        // ← 인용이 치환된 마크다운으로 교체
-      bibHtml = bibliographyHtml;   // ← 렌더 단계에서 본문 하단에 붙임
-    }
-  } catch (e) {
-    // 설정/파싱 실패는 페이지 렌더를 막지 않음
-    console.warn("[post] bibtex process skipped:", e);
-  }
-
   // ✅ siteUrl을 항상 절대 URL로 보장해서 seoTags에 넘김
   const site = baseUrl(env);
   const desc = rec.excerpt || deriveExcerptFromRecord(rec as any, 160) || "";
