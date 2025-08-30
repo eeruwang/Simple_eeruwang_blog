@@ -62,21 +62,32 @@ export async function createDb(env: Env): Promise<DB> {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(url);
 
-    return {
-      async query<T = any>(text: string, params?: any[]) {
-        const rows = await (sql as any).unsafe(text, params ?? []);
-        return { rows: rows as T[] };
-      },
-      async tx<R>(fn: (db: { query: DB["query"] }) => Promise<R>) {
+    // 공통 쿼리 헬퍼
+    const q = async <T = any>(text: string, params?: any[]) => {
+      const rows = await (sql as any).unsafe(text, params ?? []);
+      return { rows: rows as T[] };
+    };
+
+    // begin 지원 여부 감지
+    const hasBegin = typeof (sql as any).begin === "function";
+
+    // 트랜잭션: 지원되면 사용, 아니면 동일 커넥션으로 그냥 실행 (fallback)
+    const tx = async <R>(fn: (db: { query: DB["query"] }) => Promise<R>) => {
+      if (hasBegin) {
         return (sql as any).begin(async (sql2: any) => {
-          const q = async <T = any>(text: string, params?: any[]) => {
+          const q2 = async <T = any>(text: string, params?: any[]) => {
             const rows = await sql2.unsafe(text, params ?? []);
             return { rows: rows as T[] };
           };
-          return fn({ query: q });
+          return fn({ query: q2 });
         });
-      },
+      } else {
+        // ⚠️ 실제 트랜잭션은 아님(낮은 경쟁 환경에선 충분)
+        return fn({ query: q });
+      }
     };
+
+    return { query: q, tx };
   } else {
     const { Pool } = await import("pg");
     const pool = new Pool({

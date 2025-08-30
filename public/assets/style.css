@@ -392,7 +392,7 @@ body.editor-page.authed #lock{display:none}
 .editor-page .pad-12{padding:12px}
 
 /* 에디터 본문 */
-.editor-page #md{ display:block !important; min-height:320px !important; visibility:visible !important; }
+.editor-page #md{ display:block; min-height:320px !important; visibility:visible !important; }
 .editor-page .EasyMDEContainer{ display:block !important; }
 .editor-page .CodeMirror{ min-height:300px !important; }
 
