@@ -41,7 +41,7 @@ export const env: AppEnv = (() => {
   // DB 우선순위: NEON_DATABASE_URL -> DATABASE_URL
   const NEON = opt("NEON_DATABASE_URL");
   const DB = opt("DATABASE_URL");
-  const DATABASE_URL = (NEON || DB) ?? (() => { throw new Error("Missing env: DATABASE_URL (or NEON_DATABASE_URL)"); })();
+  const DATABASE_URL = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || "";
 
   return {
     SITE_URL,

@@ -46,10 +46,9 @@ type Queryable = {
 };
 
 // -------- URL / 드라이버 판별 --------
-const DATABASE_URL =
-  process.env.NEON_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "";
+// 수정 (항상 DATABASE_URL을 먼저 봄 — 너의 배포 환경과 일치)
+const DATABASE_URL = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || "";
+
 
 if (!DATABASE_URL) {
   // 일부 스크립트는 import만 하고 안 쓰는 경우가 있어 throw는 하지 않음
