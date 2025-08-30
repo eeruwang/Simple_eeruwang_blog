@@ -116,6 +116,14 @@ export const EDITOR_CLIENT_JS: string = `
     const pad = n => String(n).padStart(2,"0");
     return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+" "+pad(d.getHours())+":"+pad(d.getMinutes());
   }
+  
+  function escapeHtml(s){
+    return String(s || "")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+
+
   function setStatus(s){ STATE.status=s; if($status) $status.textContent=s; }
   function setHint(t){
     if($hint){ $hint.textContent=t; setTimeout(()=>{ if($hint.textContent===t) $hint.textContent=""; }, 2000); }
@@ -381,7 +389,7 @@ export const EDITOR_CLIENT_JS: string = `
 
   let allPosts = [];   // [{ fields: {...} }]
   let filtered = [];
-  let rowH = 56;
+  let rowH = 120;
 
   function matches(r){
     const f = r.fields || r;
@@ -403,11 +411,21 @@ export const EDITOR_CLIENT_JS: string = `
     if ($list) { $list.scrollTop = 0; renderVirtual(); }
   }
 
+  function permalinkOf(f){
+    const slug = (f.slug || "").trim();
+    const base = (f.is_page || f.Is_page) ? "/" : "/post/";
+    return slug ? base + encodeURIComponent(slug) : "";
+  }
+  function summarize(s, n = 160){
+    const t = String(s || "").replace(/\s+/g, " ").trim();
+    return t.length > n ? t.slice(0, n - 1) + "…" : t;
+  }
+
+
   function renderVirtual(){
     if(!$list) return;
     const vh = $list.clientHeight || 400;
     const total = filtered.length;
-    const totalH = total * rowH;
     const scrollTop = $list.scrollTop;
     const start = Math.max(0, Math.floor(scrollTop / rowH) - 5);
     const end = Math.min(total, start + Math.ceil(vh/rowH) + 10);
@@ -421,18 +439,27 @@ export const EDITOR_CLIENT_JS: string = `
         const f = r.fields || r;
         const id = r.Id || r.id || f.Id || f.id || '';
         const title = f.title || "(untitled)";
-        const dateStr = \`\${fmtDate(pickDateField(f))}\`;
+        const dateStr = fmtDate(pickDateField(f));
         const isPage = !!(f.is_page || f.Is_page);
         const status = isPage ? "page" : (f.published ? "published" : "draft");
+        const link = permalinkOf(f);
+        const excerpt = f.excerpt || "";
+        const tagsArr = Array.isArray(f.tags) ? f.tags
+          : (f.tags ? String(f.tags).split(",").map(s=>s.trim()).filter(Boolean) : []);
+
         return \`
-          <div class="virtual-row" data-id="\${id}" role="option" aria-label="\${title}">
-            <div style="font-weight:600">\${title}</div>
-            <div style="opacity:.8;font-size:12px">\${dateStr ? dateStr + " • " : ""}\${status}</div>
+          <div class="virtual-row" data-id="\${id}" role="option" aria-label="\${escapeHtml(title)}">
+            <div class="vr-title"><strong>\${escapeHtml(title)}</strong></div>
+            <div class="vr-meta">\${escapeHtml(dateStr)} \${dateStr ? " • " : ""}\${status}</div>
+            \${link ? \`<div class="vr-link">\${escapeHtml(link)}</div>\` : \`\`}
+            \${excerpt ? \`<div class="vr-excerpt">\${escapeHtml(summarize(excerpt, 160))}</div>\` : \`\`}
+            \${tagsArr.length ? \`<div class="vr-tags">\${tagsArr.map(t=>\`<span class="tag">#\${escapeHtml(t)}</span>\`).join(" ")}</div>\` : \`\`}
           </div>\`;
       }).join("")}
       <div style="height:\${padBot}px"></div>
     \`;
   }
+
 
   $list?.addEventListener('scroll', debounce(renderVirtual, 16));
   $list?.addEventListener('click', (e)=>{
