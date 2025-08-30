@@ -1,4 +1,5 @@
 // api/[[...all]].ts
+import { handleNewPost } from "../lib/api/newpost.js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 export const config = { runtime: "nodejs" };
 
@@ -237,6 +238,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       applyEditorCors(req, res, env);
       setSecurityHeadersVercel(res);
       return res.status(200).json({ ok: true, url: (blob as any).url, key, contentType: type, size });
+    }
+    // 2.8) 새 글/부트스트랩 (/api/newpost) - GET 또는 POST
+    if (path === "/api/newpost" && (req.method === "GET" || req.method === "POST")) {
+      // WHATWG Request로 변환
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (Array.isArray(v)) headers.set(k, v.join(", "));
+        else if (typeof v === "string") headers.set(k, v);
+      }
+      let bodyInit: BodyInit | undefined;
+      if (req.method === "POST") {
+        if (Buffer.isBuffer(req.body)) bodyInit = new Uint8Array(req.body);
+        else if (typeof req.body === "string") bodyInit = req.body;
+        else if (req.body != null) {
+          if (!headers.has("content-type")) headers.set("content-type", "application/json");
+          bodyInit = JSON.stringify(req.body);
+        }
+      }
+      const webReq = new Request(url.toString(), { method: req.method, headers, body: bodyInit });
+      const r = await handleNewPost(webReq, env);
+      applyEditorCors(req, res, env);
+      return await sendFetchResponse(res, r);
     }
 
     // 3) 에디터 API 보호 라우트 (/api/…)
