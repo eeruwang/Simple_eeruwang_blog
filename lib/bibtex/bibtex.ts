@@ -503,13 +503,14 @@ function generateBibliographyHtml(entries: BibEntry[], style = "harvard", opts: 
 
   return `
 <section class="bibliography" aria-labelledby="bib-h">
-  <h2 id="bib-h">References</h2>
+  <h2 id="bib-h">Bibliography</h2>   <!-- ← 여기 -->
   <ol class="bib-list">
     ${items}
   </ol>
   ${usage}
 </section>`;
 }
+
 
 /* ─────────────────────────────────────────────────────────────
  *  Orchestrator
