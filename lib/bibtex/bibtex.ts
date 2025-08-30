@@ -486,30 +486,26 @@ function pickFormatter(style = "harvard"): (e: BibEntry) => string {
   return fmtEntryHarvard;
 }
 
-function generateBibliographyHtml(entries: BibEntry[], style = "harvard", opts: { usageHelp?: boolean } = {}): string {
+function generateBibliographyHtml(
+  entries: BibEntry[],
+  style = "harvard",
+  _opts: { usageHelp?: boolean } = {}
+): string {
   if (!entries.length) return "";
   const fmt = pickFormatter(style);
-  const items = entries.map((e) => `<li id="ref-${esc(e.citationKey)}">${fmt(e)}</li>`).join("\n");
-
-  const usageHelp = opts.usageHelp !== false; // default true
-  const usage = usageHelp ? `
-  <div class="citation-usage" style="margin-top:1rem; font-size:0.95em; opacity:0.9">
-    <strong>인용 문법</strong><br>
-    <code>[@key]</code> → <em>(Author, Year)</em><br>
-    <code>[-@key]</code> → <em>(Year)</em><br>
-    <code>[@a; @b]</code> → <em>여러 개</em><br>
-    <code>[@key, p. 12]</code> → <em>위치 지정</em>
-  </div>` : "";
+  const items = entries
+    .map((e) => `<li id="ref-${esc(e.citationKey)}">${fmt(e)}</li>`)
+    .join("\n");
 
   return `
 <section class="bibliography" aria-labelledby="bib-h">
-  <h2 id="bib-h">Bibliography</h2>   <!-- ← 여기 -->
+  <h2 id="bib-h">Bibliography</h2>
   <ol class="bib-list">
     ${items}
   </ol>
-  ${usage}
 </section>`;
 }
+
 
 /* ─────────────────────────────────────────────────────────────
  *  Orchestrator
