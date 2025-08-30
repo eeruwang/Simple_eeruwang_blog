@@ -402,11 +402,16 @@ export const EDITOR_CLIENT_JS: string = `
     if ($list) { $list.scrollTop = 0; renderVirtual(); }
   }
 
+  // 기존 permalinkOf(f)를 아래로 교체
   function permalinkOf(f){
     const slug = (f.slug || "").trim();
+    if (!slug) return "";
     const base = (f.is_page || f.Is_page) ? "/" : "/post/";
-    return slug ? base + encodeURIComponent(slug) : "";
+    return base + slug;            // 표시용(인코딩 X, 한글 그대로)
   }
+  // ※ 실제 a.href를 만들 때는 encodeURIComponent를 써야 함.
+  //   (지금은 리스트에서 텍스트만 보여주므로 표시용은 이대로 충분)
+
   function summarize(s, n = 160){
     const t = String(s || "").replace(/\\s+/g, " ").trim();
     return t.length > n ? t.slice(0, n - 1) + "…" : t;
