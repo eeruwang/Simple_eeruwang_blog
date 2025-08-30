@@ -179,8 +179,12 @@ export async function renderPostPage(
 
   // 🔁 한 줄 교체 핵심: 각주 치환 → 서버에서 마크다운 → HTML(+sanitize)
   const { md: mdWithFoot, footer } = applyFootnotes(mdFinal);
-  const contentHtml = mdToSafeHtml(mdWithFoot) + (footer || "") + (bibHtml || "") + (bibDebug || "");
-
+  const contentHtml =
+    mdToSafeHtml(mdWithFoot) +
+    (footer || "") +                 // 풋노트 먼저
+    '<!-- __BIB_HERE__ -->' +        // ← 전환 컨테이너(#content) 안쪽 앵커
+    (bibHtml || "") +                // 이미 만들어진 경우는 그대로 붙음
+    (bibDebug || "");
   // 클라이언트용 스크립트는 최소화(뒤로가기만 유지). marked CDN 제거!
   const headExtra = `
     <script src="/assets/press.js" defer></script>

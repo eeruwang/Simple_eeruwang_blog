@@ -486,7 +486,6 @@ function pickFormatter(style = "harvard"): (e: BibEntry) => string {
   return fmtEntryHarvard;
 }
 
-// lib/bibtex/bibtex.ts
 function generateBibliographyHtml(entries: BibEntry[], style = "harvard"): string {
   if (!entries.length) return "";
   const fmt = pickFormatter(style);
