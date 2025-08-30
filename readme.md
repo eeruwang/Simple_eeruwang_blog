@@ -110,3 +110,11 @@ src/
 - [ ] 헬스체크/관측(로그·메트릭) 가이드
 - [ ] 404/500 커스텀 페이지
 - [ ] 간단한 사이트맵 생성기
+
+## 폰트 사용 및 라이선스 (Markdown 코드 블록)
+
+이 프로젝트의 Markdown 코드 블록은 Inconsolata Nerd Font를 사용합니다.
+Inconsolata Nerd Font는 Nerd Fonts 프로젝트가 원본 Inconsolata(Raph Levien)를 아이콘 글리프로 패치한 배포본입니다.
+	•	원본 폰트: Inconsolata — © Raph Levien — SIL Open Font License 1.1 (OFL-1.1).  ￼
+	•	패치 배포본: Nerd Fonts의 Inconsolata Nerd Font — OFL-1.1 유지.  ￼
+	•	패치 스크립트/툴(font-patcher 등 Nerd Fonts 소스코드): MIT License.  ￼
