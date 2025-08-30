@@ -200,10 +200,11 @@ export const EDITOR_CLIENT_JS: string = `
   });
 
   // ===== 저장/발행/삭제 =====
+  function currentMode(){ return ($publishedToggle && $publishedToggle.checked) ? "published" : "draft"; }
   const btnSave = document.getElementById("save");
   const btnPub  = document.getElementById("publish");
-  if(btnSave) btnSave.onclick = ()=>save("draft");
-  if(btnPub)  btnPub.onclick  = ()=>save("published");
+  if(btnSave) btnSave.onclick = ()=>save(currentMode());
+  if(btnPub)  btnPub.onclick  = ()=>save("published"); // (있다면 호환)
 
   const btnDel = document.getElementById("delete");
   if(btnDel){
@@ -323,28 +324,49 @@ export const EDITOR_CLIENT_JS: string = `
   const filterSelect = $("#filterSelect");
   const savedViews = $("#savedViews");
   const saveViewBtn = $("#saveViewBtn");
+
+  // 사이드(목록) 접기/오버레이 토글 — 핸들 제거 버전
   const side = document.querySelector('.editor-side');
-  const handle = document.querySelector('.resize-handle');
+  const sideBackdrop = document.getElementById('sideBackdrop');
+  const mq = window.matchMedia('(max-width: 900px)');
+  const isM = () => mq.matches;
+
+  function setMobileOpen(on){
+    document.body.classList.toggle('side-open', on);
+    $sideToggle?.setAttribute('aria-expanded', on ? 'true' : 'false');
+    if (on && isM()) document.body.classList.add('no-scroll'); else document.body.classList.remove('no-scroll');
+  }
+  function setCollapsed(collapsed){
+    document.body.classList.toggle('side-collapsed', collapsed);
+    $sideToggle?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+  function initExpandedState(){
+    if (isM()){
+      const on = document.body.classList.contains('side-open');
+      $sideToggle?.setAttribute('aria-expanded', on ? 'true' : 'false');
+    } else {
+      const c = document.body.classList.contains('side-collapsed');
+      $sideToggle?.setAttribute('aria-expanded', c ? 'false' : 'true');
+    }
+  }
+  $sideToggle?.addEventListener('click', (e)=> {
+    e.preventDefault();
+    if (isM()){
+      setMobileOpen(!document.body.classList.contains('side-open'));
+    } else {
+      setCollapsed(!document.body.classList.contains('side-collapsed'));
+    }
+  });
+  sideBackdrop?.addEventListener('click', ()=> setMobileOpen(false));
+  document.addEventListener('keydown', (e)=> { if (e.key === 'Escape') setMobileOpen(false); });
+  mq.addEventListener?.('change', ()=>{ if (!isM()) setMobileOpen(false); initExpandedState(); });
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initExpandedState); } else { initExpandedState(); }
 
   const debounce = (fn, ms=300)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms)}};
   const store = {
     get(k,d){ try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
     set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
   };
-
-  if (handle && side){
-    let startX, startW;
-    handle.addEventListener('mousedown', e=>{
-      startX = e.clientX; startW = side.getBoundingClientRect().width;
-      function move(ev){
-        const w = Math.max(220, Math.min(520, startW + (ev.clientX - startX)));
-        side.style.width = w+'px'; side.style.flex = '0 0 '+w+'px';
-      }
-      function up(){ window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
-      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
-    });
-  }
-  $sideToggle?.addEventListener('click', ()=> side?.classList.toggle('open'));
 
   let allPosts = [];   // [{ fields: {...} }]
   let filtered = [];
@@ -393,9 +415,12 @@ export const EDITOR_CLIENT_JS: string = `
         const status = isPage ? "page" : (f.published ? "published" : "draft");
         return \`
           <div class="virtual-row" data-id="\${id}" role="option" aria-label="\${title}">
-            <div style="font-weight:600">\${title}</div>
-            <div style="opacity:.8;font-size:12px">\${dateStr ? dateStr + " • " : ""}\${status}</div>
-          </div>\`;
+            <div style="font-weight:600;white-space:normal;word-break:break-word">\${title}</div>
+            <div style="opacity:.85;font-size:12px;display:flex;gap:8px;flex-wrap:wrap">
+              <span style="padding:2px 8px;border-radius:999px;background:\${f.published?'#e6f4ea':'#fdecef'};color:\${f.published?'#0f5132':'#842029'}">\${f.published?'published':'draft'}</span>
+              <span style="opacity:.7">\${dateStr}</span>
+              \${f.slug ? '<span style="opacity:.7">/'+(isPage?f.slug:('post/'+f.slug))+'</span>' : ''}
+            </div>\`;
       }).join("")}
       <div style="height:\${padBot}px"></div>
     \`;
@@ -619,8 +644,6 @@ export const EDITOR_CLIENT_JS: string = `
     if ($readingStats) $readingStats.textContent = readingStatFrom(mde.value()||"");
   }, 300));
 
-  $saveBtn?.addEventListener('click', ()=>save("draft"));
-  $publishBtn?.addEventListener('click', ()=>save("published"));
   $publishedToggle?.addEventListener('change', ()=>{
     if(!$publishedToggle) return;
     STATE.status = $publishedToggle.checked ? "published" : "draft";
@@ -693,16 +716,13 @@ export const EDITOR_CLIENT_JS: string = `
     }
   });
 
+  // ===== 로그아웃(선택 UI용) =====
+  const signout = document.getElementById("signout");
+  signout?.addEventListener("click", () => {
+    sessionStorage.removeItem("editor_key");
+    STATE.key = "";
+    document.body.removeAttribute("data-auth");
+  });
+
 })();
-
-// editor.client.ts 하단 아무 데나
-const signout = document.getElementById("signout");
-signout?.addEventListener("click", () => {
-  sessionStorage.removeItem("editor_key");
-  STATE.key = "";
-  document.body.removeAttribute("data-auth");
-  // 폼/상태 초기화는 필요에 따라 추가
-});
-
-
 `;

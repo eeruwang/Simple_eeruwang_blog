@@ -362,8 +362,6 @@ body.editor-page.authed #lock{display:none}
   max-width: var(--shell-max);
   margin: 0 auto;
 }
-.resize-handle{cursor:col-resize;position:relative}
-.resize-handle::after{content:"";position:absolute;inset:0;width:2px;margin:0 auto;background:#eee}
 
 /* Side (desktop dock) */
 .editor-side{ position:relative; transform:none; box-shadow:none; display:flex; flex-direction:column; overflow:hidden;
@@ -419,7 +417,6 @@ body.editor-page.authed #lock{display:none}
 /* Mobile */
 @media (max-width:900px){
   .editor-layout{ grid-template-columns:1fr; }
-  .resize-handle{ display:none; }
   .editor-main{ grid-template-columns:1fr; }
   .editor-extras{ order:-1; flex-direction:row; gap:12px; overflow:auto }
   .toc-panel{ max-height:160px; position:static; border-left:none; padding-left:0 }

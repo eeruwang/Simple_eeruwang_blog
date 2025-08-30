@@ -69,8 +69,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       </aside>
 
       <div class="side-backdrop" id="sideBackdrop" aria-hidden="true"></div>
-      <div class="resize-handle" aria-hidden="true"></div>
-
       <div class="editor-main">
         <section class="editor-split">
           <main class="editor pad-12">
