@@ -355,10 +355,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       let bodyInit: BodyInit | undefined;
       if (req.method !== "GET" && req.method !== "HEAD") {
-        if (Buffer.isBuffer(req.body)) bodyInit = new Uint8Array(req.body);
-        else if (typeof req.body === "string") bodyInit = req.body;
-        else if (req.body == null) bodyInit = undefined;
-        else {
+        if (Buffer.isBuffer(req.body)) {
+          bodyInit = new Uint8Array(req.body);
+        } else if (typeof req.body === "string") {
+          bodyInit = req.body;
+        } else if (req.body == null) {
+          // ⬇⬇ JSON 바디가 req.body에 없을 때 스트림에서 직접 읽기
+          const chunks: Buffer[] = [];
+          for await (const chunk of req as any) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          if (chunks.length) {
+            bodyInit = Buffer.concat(chunks);
+            // content-type이 비어 있으면 JSON으로 가정
+            if (!headers.has("content-type")) headers.set("content-type", "application/json");
+          }
+        } else {
+          // 객체로 파싱돼 온 경우
           if (!headers.has("content-type")) headers.set("content-type", "application/json");
           bodyInit = JSON.stringify(req.body);
         }
@@ -369,6 +382,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       applyEditorCors(req, res, env);
       return await sendFetchResponse(res, r);
     }
+
 
     // 4) 에디터 HTML
     if (path === "/editor" && req.method === "GET") {
