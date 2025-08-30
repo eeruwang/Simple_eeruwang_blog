@@ -360,7 +360,18 @@ body.editor-page.authed #lock{display:none}
 .editor-side{ position:relative; transform:none; box-shadow:none; display:flex; flex-direction:column; overflow:hidden;
   border-right:1px solid #e5e5e5; background:#fafafa; z-index:1; }
 .editor-side.open{ transform:translateX(0); }
-.side-backdrop{ display:none; }
+.side-backdrop{
+  position: fixed;     /* 문서 흐름에서 빼서 겹치게 */
+  inset: 0;            /* 화면 전체 덮기 */
+  background: rgba(0,0,0,.12); /* 살짝 어둡게 (원하면 0으로) */
+  display: none;
+  z-index: 1000;       /* 사이드 패널(1001)보다 낮게 */
+  pointer-events: none;/* 닫히기 전까진 이벤트 막기 */
+}
+body.side-open .side-backdrop{
+  display: block;
+  pointer-events: auto; /* 열렸을 때 클릭으로 닫히게 */
+}
 
 .side-head{
   display:flex; gap:8px; padding:8px; position:sticky; top:0; background:#fafafa; z-index:2; border-bottom:1px solid #eee
