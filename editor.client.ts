@@ -324,7 +324,6 @@ export const EDITOR_CLIENT_JS: string = `
   const savedViews = $("#savedViews");
   const saveViewBtn = $("#saveViewBtn");
   const side = document.querySelector('.editor-side');
-  const handle = document.querySelector('.resize-handle');
 
   const debounce = (fn, ms=300)=>{ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms)}};
   const store = {
@@ -332,19 +331,53 @@ export const EDITOR_CLIENT_JS: string = `
     set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
   };
 
-  if (handle && side){
-    let startX, startW;
-    handle.addEventListener('mousedown', e=>{
-      startX = e.clientX; startW = side.getBoundingClientRect().width;
-      function move(ev){
-        const w = Math.max(220, Math.min(520, startW + (ev.clientX - startX)));
-        side.style.width = w+'px'; side.style.flex = '0 0 '+w+'px';
-      }
-      function up(){ window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
-      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
-    });
+  // 반응형 전환 + 사이드 열고닫기 컨트롤러
+  const mq = window.matchMedia('(max-width: 900px)');
+  const isM = () => mq.matches;
+
+  function setMobileOpen(on) {
+    document.body.classList.toggle('side-open', !!on); // 모바일 오버레이(몸통 클래스)
   }
-  $sideToggle?.addEventListener('click', ()=> side?.classList.toggle('open'));
+
+  // 초기 진입 시 상태 동기화
+  function syncOnLoad() {
+    if (isM()) {
+      // 모바일로 들어왔으면 데스크탑 접힘 상태는 강제로 해제
+      document.body.classList.remove('side-collapsed');
+    }
+    setMobileOpen(false); // 기본은 닫힘
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', syncOnLoad);
+  } else {
+    syncOnLoad();
+  }
+
+  // 토글 버튼 동작: 모바일=오버레이, 데스크탑=접힘 토글
+  $sideToggle?.addEventListener('click', () => {
+    if (isM()) {
+      setMobileOpen(!document.body.classList.contains('side-open'));
+    } else {
+      document.body.classList.toggle('side-collapsed');
+    }
+  });
+
+  // 뷰포트 전환 시 상태 정리
+  mq.addEventListener?.('change', () => {
+    if (isM()) {
+      // 모바일로 진입하면 데스크탑용 접힘 상태를 반드시 풀어야 토글이 보임
+      document.body.classList.remove('side-collapsed');
+      setMobileOpen(false);
+    } else {
+      // 데스크탑 복귀 시 모바일 오버레이는 닫기
+      setMobileOpen(false);
+    }
+  });
+
+  // 배경 클릭/ESC로 모바일 오버레이 닫기(있으면)
+  document.getElementById('sideBackdrop')?.addEventListener('click', () => setMobileOpen(false));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMobileOpen(false); });
+
 
   let allPosts = [];   // [{ fields: {...} }]
   let filtered = [];

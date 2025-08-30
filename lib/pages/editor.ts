@@ -249,8 +249,16 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     bd?.addEventListener('click', ()=> setMobileOpen(false));
     document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') setMobileOpen(false); });
     mq.addEventListener?.('change', ()=>{
-      // 모바일 → 데스크탑 전환 시 모바일 오버레이 상태 정리
-      if (!isM()) setMobileOpen(false);
+      if (isM()) {
+        // 모바일로 진입하면 데스크탑용 '접힘' 상태를 반드시 해제해야
+        // overlay 토글이 정상 동작함.
+        document.body.classList.remove('side-collapsed');
+        setMobileOpen(false); // 기본은 닫힌 상태
+      } else {
+        // 데스크탑으로 돌아갈 때도 모바일 오버레이는 정리
+        setMobileOpen(false);
+      }
+      initExpandedState();
     });
   })();
 </script>
