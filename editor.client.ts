@@ -654,6 +654,7 @@ export const EDITOR_CLIENT_JS: string = `
   if (bibtexBtn && bibtexFile) {
     bibtexBtn.addEventListener('click', () => {
       if (!STATE.key) { alert('Sign in first'); return; }
+      // iOS/Safari 대비: display:none 쓰지 말고 화면 밖으로만 빼둬야 함 (이미 스타일 ok)
       bibtexFile.value = '';
       bibtexFile.click();
     });
@@ -670,7 +671,7 @@ export const EDITOR_CLIENT_JS: string = `
         setHint('Uploading reference.bib...');
         const res = await fetch('/api/upload?overwrite=1', {
           method: 'POST',
-          headers: { 'x-editor-token': STATE.key }, // multipart라 content-type 자동
+          headers: { 'x-editor-token': STATE.key }, // multipart는 content-type 자동
           body: fd
         });
         const j = await res.json().catch(()=> ({}));
@@ -679,8 +680,7 @@ export const EDITOR_CLIENT_JS: string = `
           alert('업로드 실패: ' + (j?.error || res.status));
           return;
         }
-        setHint('BIBTEX uploaded');
-        // 필요하면 j.url / j.path 활용
+        setHint('BIBTEX uploaded'); // 필요하면 j.url / j.path 사용
       } catch (e) {
         console.error(e);
         setHint('BIBTEX upload error');
@@ -690,50 +690,6 @@ export const EDITOR_CLIENT_JS: string = `
   } else {
     console.warn('[editor] bibtex UI missing');
   }
-
-
-
-    // 매 클릭마다 1회성 change 핸들러 부착
-    const onPick = async () => {
-      try {
-        const f = inp!.files?.[0];
-        if (!f) return;
-
-        const fd = new FormData();
-        fd.append('file', f, 'reference.bib'); // 파일명 고정
-        fd.append('name', 'reference.bib');
-
-        setHint('Uploading reference.bib...');
-        const res = await fetch('/api/upload?overwrite=1', {
-          method: 'POST',
-          headers: { 'x-editor-token': STATE.key },
-          body: fd
-        });
-        const j = await res.json().catch(() => ({} as any));
-
-        if (!res.ok || j?.ok !== true) {
-          console.error('BIBTEX upload failed:', j);
-          setHint('BIBTEX upload error');
-          alert('업로드 실패: ' + (j?.error || res.status));
-          return;
-        }
-
-        setHint('BIBTEX uploaded');
-        // j.url / j.path 필요하면 여기서 사용 가능
-      } catch (err) {
-        console.error(err);
-        setHint('BIBTEX upload error');
-        alert('업로드 에러');
-      } finally {
-        inp!.value = '';
-        inp!.removeEventListener('change', onPick);
-      }
-    };
-
-    inp.addEventListener('change', onPick, { once: true });
-    inp.click();
-  });
-
 
 
   // ===== 스티키바: 프리뷰 토글/저장 버튼(스냅샷/통계) =====
@@ -771,18 +727,20 @@ export const EDITOR_CLIENT_JS: string = `
 
   const renderPreviewDeb = debounce(renderPreview, 250);
 
-  // ✅ 이벤트 위임: 언제 로드되어도 동작
+  // ✅ 이벤트 위임: 언제 로드되어도 동작 (순수 JS)
   document.addEventListener('click', (e) => {
-    const btn = (e.target as Element | null)?.closest?.('#previewToggleBtn');
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const btn = t.closest('#previewToggleBtn');
     if (!btn) return;
 
-    const split = document.querySelector('.editor-split') as HTMLElement | null;
-    const pane  = document.getElementById('previewPane') as HTMLElement | null;
+    const split = document.querySelector('.editor-split');
+    const pane  = document.getElementById('previewPane');
 
-    const on = !!split?.classList.toggle('show-preview');
+    const on = !!(split && split.classList.toggle('show-preview'));
     if (pane) pane.hidden = !on;
 
-    (btn as HTMLElement).setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     if (on) renderPreview();
   });
 
