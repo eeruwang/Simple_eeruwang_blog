@@ -511,7 +511,6 @@ function generateBibliographyHtml(entries: BibEntry[], style = "harvard", opts: 
 </section>`;
 }
 
-
 /* ─────────────────────────────────────────────────────────────
  *  Orchestrator
  * ──────────────────────────────────────────────────────────── */
