@@ -1,4 +1,4 @@
-// lib/bibtex.ts
+// lib/bibtex/bibtex.ts
 
 /**
  * Minimal, dependency-free BibTeX utilities with inline-citation support.

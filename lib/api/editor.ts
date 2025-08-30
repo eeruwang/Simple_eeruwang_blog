@@ -1,13 +1,4 @@
 // lib/api/editor.ts
-// Vercel + Neon(Postgres) + @vercel/blob — 에디터 전체 기능 안정판
-// - 목록/단건( id, slug, query 지원 )
-// - 생성/수정/삭제
-// - 서버사이드 미리보기
-// - 업로드(multipart + JSON base64)
-// - 스키마 자동 부트스트랩(테이블 + 트리거)
-// - 인스턴스 최초 1회 스키마 보증 + 목록 0건/스키마없음 자동 복구
-// - 발행 시 published_at 자동 채움(신규/수정 모두)
-// - ✅ 한글 포함 슬러그 지원(정규화 + 유니크 보장)
 
 import { Pool } from "pg";
 import { put, del } from "@vercel/blob";
@@ -197,9 +188,42 @@ export async function bootstrapDb(db: DB): Promise<void> {
   create trigger trg_posts_set_updated
   before update on posts
   for each row execute procedure set_updated_and_published_at();
+
+  -- 🔧 설정 저장소
+  create table if not exists app_settings(
+    k text primary key,
+    v text not null,
+    updated_at timestamptz default now()
+  );
+  create or replace function set_settings_updated() returns trigger as $$
+  begin
+    new.updated_at = now();
+    return new;
+  end $$ language plpgsql;
+  drop trigger if exists trg_app_settings_updated on app_settings;
+  create trigger trg_app_settings_updated
+  before update on app_settings
+  for each row execute procedure set_settings_updated();
   `;
   await db.tx(async ({ query }) => { await query(ddl); });
 }
+
+// ─────────────────────────────────────────────────────────────
+// BIBTEX Helper 
+// ─────────────────────────────────────────────────────────────
+
+async function setSetting(db: DB, key: string, val: string) {
+  await db.query(
+    `insert into app_settings(k,v) values($1,$2)
+     on conflict (k) do update set v=excluded.v, updated_at=now()`,
+    [key, val]
+  );
+}
+async function getSetting(db: DB, key: string): Promise<string | null> {
+  const { rows } = await db.query(`select v from app_settings where k=$1 limit 1`, [key]);
+  return rows?.[0]?.v ?? null;
+}
+
 
 // ─────────────────────────────────────────────────────────────
 // API Entry
@@ -232,14 +256,61 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     catch (e: any) { return json({ ok: false, error: e?.message || String(e) }, 500); }
   }
 
+  // ── 관리용 설정 API (GET 전체/단건, PUT 저장) ─────────────────────────────
+  if (pathname === "/api/admin/settings") {
+    if (!requireEditor(request, env)) return json({ error: "unauthorized" }, 401);
+
+    if (request.method === "GET") {
+      const key = url.searchParams.get("key");
+      if (key) {
+        const v = await getSetting(db, key);
+        return json({ ok: true, key, value: v });
+      } else {
+        const { rows } = await db.query(
+          `select k as key, v as value, updated_at from app_settings order by k asc`
+        );
+        return json({ ok: true, list: rows });
+      }
+    }
+
+    if (request.method === "PUT") {
+      const body = await request.json().catch(() => ({}));
+      const key = String(body?.key || "").trim();
+      const val = String(body?.value ?? "");
+      if (!key) return json({ error: "key required" }, 400);
+      await setSetting(db, key, val);
+      return json({ ok: true });
+    }
+  }
+
+
   // ── 미리보기: POST /api/posts/preview
   if (pathname === "/api/posts/preview" && request.method === "POST") {
     if (!requireEditor(request, env)) return json({ error: "unauthorized" }, 401);
     const body = await request.json().catch(() => ({}));
     const md = String(body?.md ?? body?.text ?? "");
+
+    // ⬇ 추가: BibTeX 처리(환경변수 → DB 설정)
+    try {
+      const { resolveBibtexConfig } = await import("../bibtex/config.js");
+      const { processBib } = await import("../../lib/bibtex/bibtex.js");
+      const { url: bibUrl, style } = await resolveBibtexConfig(env, db);
+
+      if (bibUrl) {
+        const { content, bibliographyHtml } = await processBib(md, bibUrl, {
+          style: style || "harvard",
+          usageHelp: true,
+          ibid: true,
+        });
+        const html = mdToSafeHtml(content) + bibliographyHtml;
+        return json({ ok: true, html });
+      }
+    } catch { /* 없으면 무시하고 기본 처리 */ }
+
     const html = mdToSafeHtml(md);
     return json({ ok: true, html });
   }
+
 
   // ── 업로드: POST /api/upload
   if (pathname === "/api/upload" && request.method === "POST") {
@@ -294,11 +365,27 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         addRandomSuffix: false,            // ★ 중요: 파일명 고정
       });
 
+      /* === PATCH: reference.bib 이면 설정 저장 ================================== */
+      if (filename?.toLowerCase() === "reference.bib") {
+        try {
+          await setSetting(db, "bibtex_url", res.url);
+          await setSetting(db, "bibtex_path", res.pathname);
+          await setSetting(db, "bibtex_content_type", contentType || "text/plain");
+        } catch (e) {
+          console.warn("[upload] failed to persist bibtex setting:", e);
+          // 저장 실패해도 업로드 성공은 그대로 반환
+        }
+      }
+      /* ======================================================================== */
+
+
       return json({ ok: true, url: res.url, path: res.pathname, contentType });
     } catch (e: any) {
       return json({ ok: false, error: e?.message || String(e) }, 500);
     }
   }
+
+  
 
 
   // ── Posts root (/api/posts)

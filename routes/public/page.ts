@@ -9,6 +9,12 @@ import { renderPostPage } from "../../views/pageview.js";
 import { seoTags } from "../../lib/seo.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 
+// ★ 추가
+import { createDb } from "../../lib/api/editor.js";
+import { resolveBibtexConfig } from "../../lib/bibtex/config.js";
+import { processBib } from "../../lib/bibtex/bibtex.js";
+
+
 type Env = {
   SITE_URL?: string;
   SITE_NAME?: string;
@@ -46,6 +52,32 @@ async function withSeoHead(resp: Response, headExtra: string): Promise<Response>
   if (!h.get("content-type")) h.set("content-type", "text/html; charset=utf-8");
   return new Response(patched, { status: resp.status, headers: h });
 }
+/** 본문 하단에 bibliographyHtml을 주입 */
+async function withBibliography(resp: Response, bibliographyHtml: string): Promise<Response> {
+  if (!bibliographyHtml) return resp;
+  const ct = resp.headers.get("content-type") || "";
+  if (!/text\/html/i.test(ct)) return resp;
+
+  const html = await resp.text();
+  if (html.includes('class="bibliography"')) {
+    return new Response(html, { status: resp.status, headers: resp.headers });
+  }
+
+  // 우선순위: </article> → </main> → </body> 직전
+  let patched = html;
+  const ins = (needle: RegExp) => {
+    const next = patched.replace(needle, `${bibliographyHtml}\n$&`);
+    const changed = next !== patched;
+    patched = next;
+    return changed;
+  };
+  if (!ins(/<\/article>/i)) if (!ins(/<\/main>/i)) ins(/<\/body>/i);
+
+  const h = new Headers(resp.headers);
+  if (!h.get("content-type")) h.set("content-type", "text/html; charset=utf-8");
+  return new Response(patched, { status: resp.status, headers: h });
+}
+
 
 function baseUrl(env: Env): string {
   let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
@@ -97,6 +129,26 @@ export async function renderPage(
   const rec = await fetchPublicPageBySlug(env, s, includeDraft);
   if (!rec) return new Response("Not found", { status: 404 });
 
+  // ── BibTeX: env → DB 순으로 URL 해석 → 인용 치환 + 참고문헌 생성
+  let bibliographyHtml = "";
+  try {
+    if (/\[[^\]]*@/.test(rec.body_md || "")) {  // 본문에 [@key]가 있을 때만 처리
+      const db = createDb(env as any);
+      const { url: bibUrl, style } = await resolveBibtexConfig(env as any, db);
+      if (bibUrl) {
+        const { content, bibliographyHtml: bibHtml } = await processBib(
+          rec.body_md || "",
+          bibUrl,
+          { style: style || "harvard", usageHelp: true, ibid: true }
+        );
+        rec.body_md = content;
+        bibliographyHtml = bibHtml;
+      }
+    }
+  } catch (e) {
+    console.warn("[page] bibtex process skipped:", e);
+  }
+
   // SEO/OG 메타 주입(페이지는 website 타입이 일반적)
   const site = baseUrl(env);
   const desc = rec.excerpt || deriveExcerptFromRecord(rec as any, 160) || "";
@@ -109,6 +161,8 @@ export async function renderPage(
     type: "website",
   });
 
-  const r = await renderPostPage(env, rec as any, debug);
-  return await withSeoHead(r, headExtra);
+  // 렌더 → 참고문헌 섹션 주입 → SEO 메타 주입
+  const r0 = await renderPostPage(env, rec as any, debug);
+  const r1 = await withBibliography(r0, bibliographyHtml);
+  return await withSeoHead(r1, headExtra);
 }

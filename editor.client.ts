@@ -647,49 +647,71 @@ export const EDITOR_CLIENT_JS: string = `
     console.warn("[editor] attach UI missing");
   }
 
-  // ===== BIBTEX 업로드 (reference.bib로 항상 덮어쓰기) =====
-  const bibtexBtn  = document.getElementById("bibtexBtn") as HTMLButtonElement | null;
-  const bibtexFile = document.getElementById("bibtexFile") as HTMLInputElement | null;
+  // ===== BIBTEX 업로드 (reference.bib로 항상 덮어쓰기 · 이벤트 위임) =====
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as Element | null)?.closest?.('#bibtexBtn');
+    if (!btn) return;
 
-  bibtexBtn?.addEventListener("click", () => {
-    if (!STATE.key) { alert("Sign in first"); return; }
-    if (!bibtexFile) return;
-    bibtexFile.value = "";
-    bibtexFile.click();
-  });
+    if (!STATE.key) { setHint("Sign in first"); alert("Sign in first"); return; }
 
-  bibtexFile?.addEventListener("change", async () => {
-    const f = (bibtexFile.files && bibtexFile.files[0]) || null;
-    if (!f) return;
-
-    // FormData: reference.bib로 이름 고정 + 덮어쓰기 플래그는 쿼리스트링으로
-    const fd = new FormData();
-    fd.append("file", f, "reference.bib");
-    fd.append("name", "reference.bib"); // 서버가 이 값을 우선 사용
-
-    try {
-      setHint("Uploading reference.bib...");
-      const res = await fetch("/api/upload?overwrite=1", {
-        method: "POST",
-        headers: { "x-editor-token": STATE.key }, // 에디터 토큰만 필요(멀티파트라 content-type 자동)
-        body: fd
-      });
-      const j = await res.json().catch(()=> ({} as any));
-      if (!res.ok || j?.ok !== true) {
-        console.error("BIBTEX upload failed:", j);
-        setHint("BIBTEX upload error");
-        alert("업로드 실패: " + (j?.error || res.status));
-        return;
+    // 인풋 확보(없으면 생성), display:none 방지
+    let inp = document.getElementById('bibtexFile') as HTMLInputElement | null;
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.type = 'file';
+      inp.id = 'bibtexFile';
+      inp.accept = '.bib,text/plain';
+      inp.className = 'visually-hidden-file';
+      document.body.appendChild(inp);
+    } else {
+      const st = getComputedStyle(inp);
+      if (st.display === 'none') {
+        inp.classList.remove('hidden');
+        inp.classList.add('visually-hidden-file');
       }
-      setHint("BIBTEX uploaded");
-      // 필요하다면 위치를 저장/표시
-      // console.log("BIBTEX URL:", j.url, "path:", j.path);
-    } catch (e) {
-      console.error(e);
-      setHint("BIBTEX upload error");
-      alert("업로드 에러");
     }
+
+    // 매 클릭마다 1회성 change 핸들러 부착
+    const onPick = async () => {
+      try {
+        const f = inp!.files?.[0];
+        if (!f) return;
+
+        const fd = new FormData();
+        fd.append('file', f, 'reference.bib'); // 파일명 고정
+        fd.append('name', 'reference.bib');
+
+        setHint('Uploading reference.bib...');
+        const res = await fetch('/api/upload?overwrite=1', {
+          method: 'POST',
+          headers: { 'x-editor-token': STATE.key },
+          body: fd
+        });
+        const j = await res.json().catch(() => ({} as any));
+
+        if (!res.ok || j?.ok !== true) {
+          console.error('BIBTEX upload failed:', j);
+          setHint('BIBTEX upload error');
+          alert('업로드 실패: ' + (j?.error || res.status));
+          return;
+        }
+
+        setHint('BIBTEX uploaded');
+        // j.url / j.path 필요하면 여기서 사용 가능
+      } catch (err) {
+        console.error(err);
+        setHint('BIBTEX upload error');
+        alert('업로드 에러');
+      } finally {
+        inp!.value = '';
+        inp!.removeEventListener('change', onPick);
+      }
+    };
+
+    inp.addEventListener('change', onPick, { once: true });
+    inp.click();
   });
+
 
 
   // ===== 스티키바: 프리뷰 토글/저장 버튼(스냅샷/통계) =====
@@ -702,13 +724,29 @@ export const EDITOR_CLIENT_JS: string = `
     doc.close();
     $previewFrame.dataset.ready = "1";
   }
-  function renderPreview(){
+  async function renderPreview(){
     ensurePreviewShell();
     const doc = $previewFrame?.contentDocument; if(!doc) return;
     const md = mde?.value() || "";
-    const html = window.marked ? window.marked.parse(md) : md;
+
+    try {
+      const r = await fetch("/api/posts/preview", {
+        method: "POST",
+        headers: { "content-type":"application/json", "x-editor-token": STATE.key },
+        body: JSON.stringify({ md })
+      });
+      const j = await r.json();
+      if (r.ok && j?.ok) {
+        doc.getElementById('content').innerHTML = j.html || "";
+        return;
+      }
+    } catch {}
+
+    // 실패하면 클라 렌더 fallback
+    const html = (window.marked ? window.marked.parse(md) : md);
     doc.getElementById('content').innerHTML = html;
   }
+
   const renderPreviewDeb = debounce(renderPreview, 250);
 
   // ✅ 이벤트 위임: 언제 로드되어도 동작
