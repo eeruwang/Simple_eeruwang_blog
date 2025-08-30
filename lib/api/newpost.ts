@@ -72,7 +72,8 @@ async function uniqueSlug(db: Awaited<ReturnType<typeof createDb>>, base: string
   let slug = b, n = 1;
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const { rows } = await db.query<{ exists: boolean }>(
+    // ⬇️ 여기만 수정: 제네릭 제거 ( <{ exists: boolean }> 빼기 )
+    const { rows } = await db.query(
       `select exists(select 1 from posts where slug = $1) as exists`, [slug]
     );
     if (!rows[0]?.exists) return slug;
@@ -103,16 +104,13 @@ export async function handleNewPost(req: Request, env: DbEnv): Promise<Response>
     : (qp.tags ? String(qp.tags).split(",").map(s=>s.trim()).filter(Boolean) : ["diary","test"]);
   const excerpt = body.excerpt ?? qp.excerpt ?? "테스트 포스트입니다.";
   const is_page = !!(body.is_page ?? (qp.is_page === "1" || qp.type === "page"));
-  const published = (body.published ?? (qp.published !== "false")) ? true : false;
-  const published_at = published ? new Date().toISOString() : null;
+  const published = !!(body.published ?? (qp.published === "1"));
+  const published_at =
+    (body.published_at ?? qp.published_at) ? new Date(String(body.published_at ?? qp.published_at)).toISOString() : null;
   const cover_url = body.cover_url ?? qp.cover_url ?? null;
 
-  let db: Awaited<ReturnType<typeof createDb>>;
-  try { db = await createDb(env); } catch (e: any) {
-    return j({ error: `DB init failed: ${e?.message || e}` }, 500);
-  }
-
   try {
+    const db = createDb(env);
     await ensureSchema(db);
     const slug = await uniqueSlug(db, baseSlug);
 
