@@ -493,8 +493,8 @@ function generateBibliographyHtml(entries: BibEntry[], style = "harvard"): strin
 
   return `
   <section class="bibliography footnotes" role="doc-bibliography" aria-label="Bibliography">
-  <h3 id="bib-h"><strong>Bibliography<strong></h3>
-  <ul class="bib-list">
+  <h3 id="bib-h"><strong>Bibliography</strong></h3>
+  <div class="bib-block">
     ${items}
   </ul>
 </section>`;
