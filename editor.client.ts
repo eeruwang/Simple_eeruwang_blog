@@ -647,6 +647,51 @@ export const EDITOR_CLIENT_JS: string = `
     console.warn("[editor] attach UI missing");
   }
 
+  // ===== BIBTEX 업로드 (reference.bib로 항상 덮어쓰기) =====
+  const bibtexBtn  = document.getElementById("bibtexBtn") as HTMLButtonElement | null;
+  const bibtexFile = document.getElementById("bibtexFile") as HTMLInputElement | null;
+
+  bibtexBtn?.addEventListener("click", () => {
+    if (!STATE.key) { alert("Sign in first"); return; }
+    if (!bibtexFile) return;
+    bibtexFile.value = "";
+    bibtexFile.click();
+  });
+
+  bibtexFile?.addEventListener("change", async () => {
+    const f = (bibtexFile.files && bibtexFile.files[0]) || null;
+    if (!f) return;
+
+    // FormData: reference.bib로 이름 고정 + 덮어쓰기 플래그는 쿼리스트링으로
+    const fd = new FormData();
+    fd.append("file", f, "reference.bib");
+    fd.append("name", "reference.bib"); // 서버가 이 값을 우선 사용
+
+    try {
+      setHint("Uploading reference.bib...");
+      const res = await fetch("/api/upload?overwrite=1", {
+        method: "POST",
+        headers: { "x-editor-token": STATE.key }, // 에디터 토큰만 필요(멀티파트라 content-type 자동)
+        body: fd
+      });
+      const j = await res.json().catch(()=> ({} as any));
+      if (!res.ok || j?.ok !== true) {
+        console.error("BIBTEX upload failed:", j);
+        setHint("BIBTEX upload error");
+        alert("업로드 실패: " + (j?.error || res.status));
+        return;
+      }
+      setHint("BIBTEX uploaded");
+      // 필요하다면 위치를 저장/표시
+      // console.log("BIBTEX URL:", j.url, "path:", j.path);
+    } catch (e) {
+      console.error(e);
+      setHint("BIBTEX upload error");
+      alert("업로드 에러");
+    }
+  });
+
+
   // ===== 스티키바: 프리뷰 토글/저장 버튼(스냅샷/통계) =====
   function ensurePreviewShell(){
     if (!$previewFrame) return;

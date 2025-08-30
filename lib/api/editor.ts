@@ -10,7 +10,7 @@
 // - ✅ 한글 포함 슬러그 지원(정규화 + 유니크 보장)
 
 import { Pool } from "pg";
-import { put } from "@vercel/blob";
+import { put, del } from "@vercel/blob";
 import { Buffer } from "node:buffer";
 import { normalizeSlug } from "../../lib/slug.js";
 
@@ -251,6 +251,9 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       "";
 
     try {
+      const urlObj = new URL(request.url);
+      const overwrite = urlObj.searchParams.get("overwrite") === "1"; // ← 덮어쓰기 플래그
+
       let filename = `upload-${Date.now()}`;
       let contentType = "application/octet-stream";
       let bodyForPut: Blob | ArrayBuffer;
@@ -261,8 +264,9 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         const f = form.get("file");
         if (!f || typeof f === "string") return json({ error: "file field missing" }, 400);
         const file = f as File;
+        // name 필드가 있으면 그것(= reference.bib)을 우선 사용
         filename = (form.get("name") as string) || file.name || filename;
-        contentType = file.type || contentType;
+        contentType = file.type || "text/plain";
         bodyForPut = file; // Blob
       } else {
         const body = await request.json().catch(() => ({}));
@@ -274,12 +278,20 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         const buf = Buffer.from(b64, "base64");
         const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
         bodyForPut = ab; // ArrayBuffer
+        if (!contentType) contentType = "text/plain";
       }
 
+      // ✅ 덮어쓰기: 기존 경로 삭제(실패해도 무시)
+      if (overwrite && filename) {
+        try { await del(filename, { token: token || undefined }); } catch {}
+      }
+
+      // ✅ 랜덤 suffix 제거 → 항상 동일 경로(reference.bib)에 업로드
       const res = await put(filename, bodyForPut, {
         access: "public",
         contentType,
         token: token || undefined,
+        addRandomSuffix: false,            // ★ 중요: 파일명 고정
       });
 
       return json({ ok: true, url: res.url, path: res.pathname, contentType });
@@ -287,6 +299,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       return json({ ok: false, error: e?.message || String(e) }, 500);
     }
   }
+
 
   // ── Posts root (/api/posts)
   const postsRoot = pathname === "/api/posts";
