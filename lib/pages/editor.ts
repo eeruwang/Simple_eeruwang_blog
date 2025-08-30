@@ -37,12 +37,11 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
   <!-- 상단 헤더 (로그인 후 보임) -->
   <header class="editor-header">
     <button class="auth-only" id="new">New</button>
-    <button class="auth-only" id="save">Save Draft</button>
-    <button class="auth-only" id="publish">Publish</button>
+    <button class="auth-only" id="save">Save</button> <!-- ← 단일 버튼 -->
     <button class="auth-only" id="delete">Delete</button>
     <button class="auth-only" id="attachBtn">이미지</button>
     <input id="attach" type="file" multiple accept="image/*" class="hidden" />
-    <span id="hint" class="muted"></span>
+    <span id="hint" class="muted" aria-live="polite"></span>
     <a href="/" class="link-back" data-back>← 목록</a>
   </header>
 
@@ -102,7 +101,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
               <input id="pubdate" type="date" />
               <label class="small muted">time</label>
               <input id="pubtime" type="time" />
-              <span class="small faint">(Publish 때만 적용)</span>
+              <span class="small faint">(Published 토글이 켜져 있을 때만 적용)</span>
             </div>
 
             <textarea id="md"></textarea>
@@ -174,7 +173,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       const existing = getToken();
       if (await checkKey(existing)) {
         if (lock) lock.style.display = "none";
-        // CSS 양쪽 케이스 모두 만족
         document.body.classList.add("authed");
         document.body.dataset.auth = "1";
         await bootEditor();
