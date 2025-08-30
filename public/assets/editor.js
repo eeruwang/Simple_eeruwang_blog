@@ -96,6 +96,8 @@ export async function initEditor() {
     btnNew: $("#new"),
     btnSave: $("#save"),
     btnDelete: $("#delete"),
+    attachBtn: $("#attachBtn"),
+    attach: $("#attach"),
   };
 
   // ── 에디터 ──
@@ -243,6 +245,73 @@ export async function initEditor() {
     });
   }
 
+  // ── EasyMDE 커서에 Markdown 삽입 ──
+  function insertMarkdownAtCursor(mdText) {
+    if (mde && mde.codemirror) {
+      const cm = mde.codemirror;
+      const doc = cm.getDoc();
+      const sel = doc.getSelection();
+      if (sel && sel.length) doc.replaceSelection(mdText);
+      else {
+        const end = doc.getCursor("end");
+        doc.replaceRange(mdText, end);
+      }
+      cm.focus();
+    } else if (el.md) {
+      const ta = el.md;
+      const s = ta.selectionStart ?? ta.value.length;
+      const e = ta.selectionEnd ?? ta.value.length;
+      ta.value = ta.value.slice(0, s) + mdText + ta.value.slice(e);
+      const pos = s + mdText.length;
+      if (ta.setSelectionRange) ta.setSelectionRange(pos, pos);
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+
+  // ── 이미지 업로드 → Blob → 본문 삽입 ──
+  async function uploadImageToBlob(file) {
+    const tok = getToken();
+    if (!tok) throw new Error("로그인 토큰이 없습니다.");
+    const fd = new FormData();
+    fd.set("file", file);
+    const r = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "x-editor-token": tok }, // content-type 지정 금지 (브라우저가 자동 설정)
+      body: fd,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j?.url) throw new Error(j?.error || "upload failed");
+    return j.url;
+  }
+
+  function bindImageUpload() {
+    const btn = el.attachBtn;
+    const input = el.attach;
+    if (!btn || !input) return;
+
+    btn.addEventListener("click", () => input.click());
+
+    input.addEventListener("change", async () => {
+      const files = input.files ? Array.from(input.files) : [];
+      if (!files.length) return;
+      try {
+        setHint("이미지 업로드 중…");
+        const urls = [];
+        for (const f of files) {
+          urls.push(await uploadImageToBlob(f));
+        }
+        const block = urls.map(u => `![](${u})`).join("\n\n") + "\n";
+        insertMarkdownAtCursor(block);
+        setHint(\`이미지 \${urls.length}개 삽입 완료\`, 2000);
+      } catch (e) {
+        console.error(e);
+        setHint("이미지 업로드 실패: " + (e?.message || e), 4000);
+      } finally {
+        input.value = "";
+      }
+    });
+  }
+
   // ── 저장(토글 상태 그대로 적용) ──
   async function actionApply() {
     const data = readForm();
@@ -286,9 +355,9 @@ export async function initEditor() {
     try {
       const j = await apiSend("/api/posts/preview", "POST", { md });
       const html = j?.html ? j.html : "<p>(preview failed)</p>";
-      el.previewFrame.srcdoc = `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/assets/style.css"><article class="post">${html}</article>`;
+      el.previewFrame.srcdoc = \`<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/assets/style.css"><article class="post">\${html}</article>\`;
     } catch (e) {
-      el.previewFrame.srcdoc = `<div class="preview-error">미리보기 실패: ${escapeHtml(e?.message || String(e))}</div>`;
+      el.previewFrame.srcdoc = \`<div class="preview-error">미리보기 실패: \${escapeHtml(e?.message || String(e))}</div>\`;
     }
   }
   function togglePreview() {
@@ -334,6 +403,7 @@ export async function initEditor() {
 
   // ── 부팅 ──
   try { await ensureEditor(); } catch (e) { console.error(e); setHint(e?.message || "에디터 로드 실패"); }
+  bindImageUpload(); // ← 이미지 업로드 바인딩
   await loadList();
   useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
   setHint("에디터 준비됨", 1500);
