@@ -44,7 +44,6 @@ async function withSeoHead(resp: Response, headExtra: string): Promise<Response>
 }
 
 function baseUrl(env: Env): string {
-  // SITE_URL이 프로토콜 없이 오면 https:// 붙여서 절대 URL로
   let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
   if (raw) {
     if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
@@ -58,7 +57,14 @@ function baseUrl(env: Env): string {
 async function fetchPublicPostBySlug(env: Env, slug: string): Promise<ApiPost | null> {
   const base = baseUrl(env);
   const url = `${base}/api/posts?slug=${encodeURIComponent(slug)}`;
-  const res = await fetch(url, { headers: { "cache-control": "no-store" } });
+
+  // ⬇⬇ 서버 사이드 전용 헤더 — 토큰 있으면 함께 전송
+  const headers: Record<string, string> = { "cache-control": "no-store" };
+  const token =
+    String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim();
+  if (token) headers["x-editor-token"] = token;
+
+  const res = await fetch(url, { headers });
   if (!res.ok) return null;
   const j = await res.json();
   const item: ApiPost | undefined = j?.item;

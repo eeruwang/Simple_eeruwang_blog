@@ -14,7 +14,6 @@ import { handleEditorApi } from "../lib/api/editor.js";
 import { pingDb } from "../lib/db/db.js";
 import { createDb, bootstrapDb } from "../lib/api/editor.js";
 
-
 /* Env 타입(간소화) */
 type Env = {
   EDITOR_PASSWORD?: string;
@@ -24,18 +23,32 @@ type Env = {
 
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
+/* ── 토큰 도우미 ── */
 function getEditorTokenFromHeaders(req: VercelRequest): string {
   return (
-    (req.headers["x-editor-token"] as string) ||
-    (req.headers["x-editor-key"] as string) ||
-    ""
-  );
+    ((req.headers["x-editor-token"] as string) ||
+      (req.headers["x-editor-key"] as string) ||
+      "") as string
+  ).trim();
 }
 
 function getEditorToken(req: VercelRequest, url: URL): string {
-  return getEditorTokenFromHeaders(req) || (url.searchParams.get("token") || "");
+  return getEditorTokenFromHeaders(req) || (url.searchParams.get("token") || "").trim();
 }
 
+/* ── 공개 GET 화이트리스트 ──
+   - GET /api/posts            (목록, ?slug= 또는 ?id= 포함)
+   - GET /api/posts/:id        (단건)
+   - GET /api/diag-db          (헬스체크)
+*/
+function isPublicApiGet(req: VercelRequest, url: URL): boolean {
+  if (req.method !== "GET") return false;
+  const p = url.pathname;
+  if (p === "/api/posts") return true;
+  if (/^\/api\/posts\/\d+$/.test(p)) return true;
+  if (p === "/api/diag-db") return true;
+  return false;
+}
 
 /* ── 보안 헤더 & CORS 유틸 ── */
 function setSecurityHeadersVercel(res: VercelResponse) {
@@ -50,12 +63,20 @@ function setSecurityHeadersVercel(res: VercelResponse) {
 function originOf(u?: string | string[]): string | null {
   const s = Array.isArray(u) ? u[0] : u;
   if (!s) return null;
-  try { return new URL(s).origin; } catch { return null; }
+  try {
+    return new URL(s).origin;
+  } catch {
+    return null;
+  }
 }
 function allowedOrigin(env: Env, host?: string | string[], protoHint = "https"): string | null {
   const site = (env.SITE_URL || "").replace(/\/+$/, "");
   if (site) {
-    try { return new URL(site).origin; } catch { /* ignore */ }
+    try {
+      return new URL(site).origin;
+    } catch {
+      /* ignore */
+    }
   }
   const h = Array.isArray(host) ? host[0] : host;
   return h ? `${protoHint}://${h}` : null;
@@ -100,8 +121,7 @@ async function withSiteJs(resp: globalThis.Response): Promise<globalThis.Respons
   if (/\/assets\/site\.js/i.test(html)) {
     const h = new Headers(resp.headers);
     return new Response(html, { status: resp.status, headers: h });
-  }
-
+    }
   const inject = `<script src="/assets/site.js" defer></script>`;
   const patched = html.includes("</body>")
     ? html.replace("</body>", `${inject}\n</body>`)
@@ -117,25 +137,22 @@ async function withSiteJs(resp: globalThis.Response): Promise<globalThis.Respons
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const env = process.env as unknown as Env;
   const proto = (req.headers["x-forwarded-proto"] as string) || "https";
-  const url   = new URL(req.url!, `${proto}://${req.headers.host}`);
+  const url = new URL(req.url!, `${proto}://${req.headers.host}`);
   const rawPath = (req.query.path as string | undefined) ?? "";
-  const path = rawPath
-    ? `/${rawPath.replace(/^\/+/, "")}`
-    : url.pathname;
+  const path = rawPath ? `/${rawPath.replace(/^\/+/, "")}` : url.pathname;
 
   try {
-    // 0) 헬스체크
+    // 0) 헬스체크 (공개)
     if (path === "/api/diag-db" && req.method === "GET") {
       try {
         const r = await pingDb();
         setSecurityHeadersVercel(res);
-        return res.status(200).json({ ok:true, ...r });
-      } catch (e:any) {
+        return res.status(200).json({ ok: true, ...r });
+      } catch (e: any) {
         setSecurityHeadersVercel(res);
-        return res.status(500).json({ ok:false, error: String(e?.message||e) });
+        return res.status(500).json({ ok: false, error: String(e?.message || e) });
       }
     }
-    
 
     // ── Admin: DB 부트스트랩 (posts 테이블/트리거 생성)
     if (path === "/api/admin/bootstrap" && (req.method === "POST" || req.method === "GET")) {
@@ -164,19 +181,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       try {
         const db = await createDb(env as any);
-        // 존재 여부와 상관 없이 1개 삽입
         const { rows: ins } = await db.query(
           `insert into posts (title, slug, body_md, tags, excerpt, is_page, published)
-          values ($1,$2,$3,$4,$5,$6,$7)
-          returning id, slug`,
+           values ($1,$2,$3,$4,$5,$6,$7)
+           returning id, slug`,
           [
             "Hello World",
             `hello-${Date.now()}`,
             "# Hello\n\n샘플 글입니다.",
-            ["test","sample"],
+            ["test", "sample"],
             "샘플 글",
             false,
-            true
+            true,
           ]
         );
         setSecurityHeadersVercel(res);
@@ -186,7 +202,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(500).json({ ok: false, error: String(e?.message || e) });
       }
     }
-
 
     // 1) 에디터 키 체크
     if (path === "/api/check-key" && req.method === "GET") {
@@ -203,7 +218,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(204).end();
     }
 
-    // 2) DB 진단
+    // 2) DB 진단 (보호됨)
     if (path === "/api/diag" && req.method === "GET") {
       const tok = getEditorTokenFromHeaders(req);
       if (!tok || tok !== env.EDITOR_PASSWORD) {
@@ -221,7 +236,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 2.5) 이미지 업로드 (multipart/form-data; field name: "file")
+    // 2.5) 이미지 업로드 (multipart/form-data; field name: "file") (보호됨)
     if (path === "/api/upload" && req.method === "POST") {
       const tok = getEditorTokenFromHeaders(req);
       if (!tok || tok !== env.EDITOR_PASSWORD) {
@@ -250,8 +265,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // WHATWG Request로 변환 → formData 파싱
       const webReq = new Request(url.toString(), { method: "POST", headers: hdrs, body: bodyBuf });
-      const form = await webReq.formData().catch(() => null);
-      const file = (form?.get("file") as any) as File | null;
+      const form = await (webReq as any).formData().catch(() => null);
+      const file = (form?.get("file") as any as File) || null;
 
       if (!file) {
         setSecurityHeadersVercel(res);
@@ -283,9 +298,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const original = ((file as any).name && String((file as any).name)) || "";
       const ext = extFromType(type);
-      const base = original
-        ? original.replace(/[^\w.\-]+/g, "_").slice(0, 120)
-        : `blob.${ext || "bin"}`;
+      const base = original ? original.replace(/[^\w.\-]+/g, "_").slice(0, 120) : `blob.${ext || "bin"}`;
       const key = `uploads/${Date.now()}-${rand()}-${base}`;
 
       const blob = await put(key, file, {
@@ -298,9 +311,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       setSecurityHeadersVercel(res);
       return res.status(200).json({ ok: true, url: (blob as any).url, key, contentType: type, size });
     }
-    // 2.8) 새 글/부트스트랩 (/api/newpost) - GET 또는 POST
+
+    // 2.8) 새 글/부트스트랩 (/api/newpost) - GET 또는 POST (보호됨: 토큰은 내부 handleNewPost에서 검사)
     if (path === "/api/newpost" && (req.method === "GET" || req.method === "POST")) {
-      // WHATWG Request로 변환
       const headers = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {
         if (Array.isArray(v)) headers.set(k, v.join(", "));
@@ -321,15 +334,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return await sendFetchResponse(res, r);
     }
 
-    // 3) 에디터 API 보호 라우트 (/api/…)
+    // 3) 에디터 API 라우트 (/api/…)
     if (path.startsWith("/api/")) {
-      const tok = getEditorTokenFromHeaders(req);
-      if (!tok || tok !== env.EDITOR_PASSWORD) {
-        applyEditorCors(req, res, env);
-        setSecurityHeadersVercel(res);
-        return res.status(401).json({ error: "Unauthorized" });
+      const publicOk = isPublicApiGet(req, url); // 🔑 공개 GET이면 인증 생략
+      if (!publicOk) {
+        const tok = getEditorTokenFromHeaders(req);
+        if (!tok || tok !== (env.EDITOR_PASSWORD || "").trim()) {
+          applyEditorCors(req, res, env);
+          setSecurityHeadersVercel(res);
+          return res.status(401).json({ error: "Unauthorized" });
+        }
       }
 
+      // 원본 요청을 WHATWG Request로 변환해서 editor API에 위임
       const headers = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {
         if (Array.isArray(v)) headers.set(k, v.join(", "));
@@ -358,9 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let html = renderEditorHTML({ version: process.env.EDITOR_ASSET_VER || "v12" });
       if (!/\/assets\/editor\.js/.test(html)) {
         const inject = `<script src="/assets/editor.js" defer></script>`;
-        html = html.includes("</body>")
-          ? html.replace("</body>", `${inject}\n</body>`)
-          : `${html}\n${inject}\n`;
+        html = html.includes("</body>") ? html.replace("</body>", `${inject}\n</body>`) : `${html}\n${inject}\n`;
       }
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.setHeader("cache-control", "no-store");
@@ -423,8 +438,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const stack = e?.stack || "";
     const debug = String(process.env.ALLOW_DEBUG || "").toLowerCase() === "true";
     res.setHeader("content-type", "text/plain; charset=utf-8");
-    return res
-      .status(500)
-      .send(debug ? `Internal Error: ${msg}\n\n${stack}` : `Internal Error: ${msg}`);
+    return res.status(500).send(debug ? `Internal Error: ${msg}\n\n${stack}` : `Internal Error: ${msg}`);
   }
 }

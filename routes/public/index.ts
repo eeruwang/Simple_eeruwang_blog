@@ -36,16 +36,13 @@ type ApiPost = {
 };
 
 function baseUrl(env: Env): string {
-  // 1) SITE_URL 우선 사용하되, 프로토콜이 없으면 https:// 붙임
   let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
   if (raw) {
     if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
     return raw.replace(/\/+$/, "");
   }
-  // 2) VERCEL_URL(호스트명) 사용 시 https:// 붙임
   const vurl = (globalThis as any).process?.env?.VERCEL_URL;
   if (vurl) return `https://${String(vurl).replace(/\/+$/, "")}`;
-  // 3) 로컬 기본값
   return "http://localhost:3000";
 }
 
@@ -69,7 +66,14 @@ async function fetchPublicPosts(env: Env, page = 1, perPage = 10) {
   // 현재 페이지를 정확히 만들기 위해 넉넉히 가져옴(최대 1000)
   const need = Math.min(Math.max(page * perPage + 1, 50), 1000);
   const api = `${base}/api/posts?limit=${need}&offset=0`;
-  const res = await fetch(api, { headers: { "cache-control": "no-store" } });
+
+  // ⬇⬇ 서버 사이드에서만 쓰이는 헤더 — 토큰 있으면 같이 보냄
+  const headers: Record<string, string> = { "cache-control": "no-store" };
+  const token =
+    String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim();
+  if (token) headers["x-editor-token"] = token;
+
+  const res = await fetch(api, { headers });
   if (!res.ok) throw new Error(`posts fetch failed: ${res.status}`);
   const j = await res.json();
   const all: ApiPost[] = Array.isArray(j.list) ? j.list : [];
