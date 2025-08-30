@@ -34,18 +34,14 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
-  <!-- 상단 헤더 (로그인 후 보임) -->
+  <!-- 상단 헤더 -->
   <header class="editor-header">
     <button class="auth-only" id="new">New</button>
-    <button class="auth-only" id="save">Save</button> <!-- ← 단일 버튼 -->
-    <button class="auth-only" id="delete">Delete</button>
-    <button class="auth-only" id="attachBtn">이미지</button>
-    <input id="attach" type="file" multiple accept="image/*" class="hidden" />
     <span id="hint" class="muted" aria-live="polite"></span>
     <a href="/" class="link-back" data-back>← 목록</a>
   </header>
 
-  <!-- 툴바 (로그인 후 보임) -->
+  <!-- 툴바(필터/프리뷰/Published 토글) -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
     <button id="sideToggle" class="only-mobile" type="button" aria-controls="postVirtualList" aria-expanded="false">☰ 목록</button>
     <select id="filterSelect" aria-label="filter">
@@ -78,12 +74,21 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       <div class="editor-main">
         <section class="editor-split">
           <main class="editor pad-12">
-            <div class="row row-wrap">
+            <!-- ⬇ 같은 줄: page 체크 + Permalink + status + (Save/Delete/이미지) -->
+            <div class="row row-wrap" style="align-items:center; gap:10px;">
               <label class="check-inline">
                 <input id="is_page" type="checkbox"><span>page</span>
               </label>
               <span id="permalink" class="muted small nowrap">Permalink: /post/</span>
-              <span id="status" class="muted small ml-auto">draft</span>
+              <span id="status" class="muted small" style="margin-left:auto">draft</span>
+
+              <!-- 액션 버튼들(같은 줄, 오른쪽 정렬) -->
+              <div class="row-actions" style="display:flex; gap:8px; margin-left:12px;">
+                <button class="auth-only" id="save">Save</button>
+                <button class="auth-only" id="delete">Delete</button>
+                <button class="auth-only" id="attachBtn">이미지</button>
+                <input id="attach" type="file" multiple accept="image/*" class="hidden" />
+              </div>
             </div>
 
             <div class="row row-wrap">

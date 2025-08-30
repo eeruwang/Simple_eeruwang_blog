@@ -12,12 +12,8 @@ export async function initEditor() {
   // EasyMDE 로드 대기
   async function ensureEasyMDE() {
     let t = 0;
-    while (typeof window.EasyMDE !== "function" && t < 50) {
-      await new Promise(r => setTimeout(r, 50)); t++;
-    }
-    if (typeof window.EasyMDE !== "function") {
-      throw new Error("EasyMDE가 로드되지 않았습니다(CDN 차단/지연).");
-    }
+    while (typeof window.EasyMDE !== "function" && t < 50) { await new Promise(r => setTimeout(r, 50)); t++; }
+    if (typeof window.EasyMDE !== "function") throw new Error("EasyMDE가 로드되지 않았습니다(CDN 차단/지연).");
   }
 
   // ── 요청 유틸 ──
@@ -30,16 +26,14 @@ export async function initEditor() {
     return m ? decodeURIComponent(m[2]) : "";
   }
   function authHeaders(h) {
-    const tok = getToken();
-    const base = h && typeof h === "object" ? h : {};
+    const tok = getToken(); const base = h && typeof h === "object" ? h : {};
     return tok ? { ...base, "x-editor-token": tok } : base;
   }
   async function apiGet(url) {
     const sep = url.includes("?") ? "&" : "?";
     const bust = `${sep}ts=${Date.now()}`;
     const r = await fetch(url + bust, { headers: authHeaders(), cache: "no-store" });
-    const txt = await r.text();
-    let j; try { j = JSON.parse(txt); } catch {}
+    const txt = await r.text(); let j; try { j = JSON.parse(txt); } catch {}
     if (!r.ok) throw new Error((j && j.error) || r.statusText || ("GET " + url + " failed"));
     return j;
   }
@@ -50,8 +44,7 @@ export async function initEditor() {
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
     });
-    const txt = await r.text();
-    let j; try { j = JSON.parse(txt); } catch {}
+    const txt = await r.text(); let j; try { j = JSON.parse(txt); } catch {}
     if (!r.ok) throw new Error((j && j.error) || r.statusText || (method + " " + url + " failed"));
     return j;
   }
@@ -65,11 +58,9 @@ export async function initEditor() {
 
   // ── 헬퍼 ──
   function slugify(s) {
-    return String(s || "")
-      .trim().toLowerCase()
+    return String(s || "").trim().toLowerCase()
       .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
-      .replace(/^-+|-+$/g, "")
-      .replace(/-{2,}/g, "-") || "post";
+      .replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-") || "post";
   }
   function escapeHtml(s) {
     return String(s || "")
@@ -78,8 +69,7 @@ export async function initEditor() {
   }
   function formatDateTime(isoLike) {
     if (!isoLike) return "";
-    const dt = new Date(isoLike);
-    if (isNaN(dt.getTime())) return "";
+    const dt = new Date(isoLike); if (isNaN(dt.getTime())) return "";
     const pad = (n) => String(n).padStart(2, "0");
     return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
@@ -104,7 +94,7 @@ export async function initEditor() {
     previewFrame: $("#previewFrame"),
     md: $("#md"),
     btnNew: $("#new"),
-    btnSave: $("#save"),     // ← 단일 버튼만 사용
+    btnSave: $("#save"),
     btnDelete: $("#delete"),
   };
 
@@ -115,40 +105,30 @@ export async function initEditor() {
     if (mde) return mde;
     if (!el.md) throw new Error("#md textarea not found");
     mde = new window.EasyMDE({
-      element: el.md,
-      autofocus: false,
-      spellChecker: false,
-      autosave: { enabled: false },
-      status: false,
-      minHeight: "300px",
-      placeholder: "Write in Markdown…",
-      autoDownloadFontAwesome: false
+      element: el.md, autofocus: false, spellChecker: false,
+      autosave: { enabled: false }, status: false, minHeight: "300px",
+      placeholder: "Write in Markdown…", autoDownloadFontAwesome: false
     });
     return mde;
   }
 
   // ── 상태 & 유틸 ──
   let state = { id: null, slug: "", is_page: false, published: false };
+  const wantsPublished = () => (el.publishedToggle ? !!el.publishedToggle.checked : false);
 
-  function wantsPublished() {
-    return el.publishedToggle ? !!el.publishedToggle.checked : false;
-  }
   function getPublishAtFromInputs() {
-    const d = (el.pubdate && el.pubdate.value) ? el.pubdate.value : "";
-    const t = (el.pubtime && el.pubtime.value) ? el.pubtime.value : "";
+    const d = el.pubdate?.value || ""; const t = el.pubtime?.value || "";
     if (!d && !t) return null;
-    return d ? (t ? (d + "T" + t + ":00") : (d + "T00:00:00")) : new Date().toISOString();
+    return d ? (t ? `${d}T${t}:00` : `${d}T00:00:00`) : new Date().toISOString();
   }
 
   function computePermalink(slug) {
     const isPage = el.isPage ? !!el.isPage.checked : !!state.is_page;
-    const base = isPage ? "/" : "/post/";
-    const s = String(slug || "").trim();
+    const base = isPage ? "/" : "/post/"; const s = String(slug || "").trim();
     return base + (s ? encodeURIComponent(s) : "");
   }
   function updatePermalink(slug) {
-    if (!el.permalink) return;
-    el.permalink.textContent = "Permalink: " + computePermalink(slug);
+    el.permalink && (el.permalink.textContent = "Permalink: " + computePermalink(slug));
   }
 
   function readTagsInput(val) {
@@ -156,11 +136,11 @@ export async function initEditor() {
     return String(val || "").split(",").map(s => s.trim()).filter(Boolean);
   }
   function readForm() {
-    const title = el.title ? el.title.value : "";
-    const slugIn = el.slug ? el.slug.value : "";
+    const title = el.title?.value || "";
+    const slugIn = el.slug?.value || "";
     const slug = (slugIn || slugify(title)).trim();
-    const tags = readTagsInput(el.tags ? el.tags.value : "");
-    const excerpt = el.excerpt ? el.excerpt.value : "";
+    const tags = readTagsInput(el.tags?.value || "");
+    const excerpt = el.excerpt?.value || "";
     const is_page = el.isPage ? !!el.isPage.checked : false;
     const published = wantsPublished();
     const body_md = mde ? mde.value() : (el.md ? el.md.value : "");
@@ -171,7 +151,7 @@ export async function initEditor() {
     if (!el.list) return;
     el.list.querySelectorAll(".virtual-row").forEach(x => x.classList.remove("active"));
     const row = el.list.querySelector('.virtual-row[data-id="' + id + '"]');
-    if (row) row.classList.add("active");
+    row && row.classList.add("active");
   }
 
   function useRecord(rec) {
@@ -180,7 +160,7 @@ export async function initEditor() {
       id: rec?.id ?? null,
       slug: rec?.slug || "",
       is_page: !!rec?.is_page,
-      published: !!rec?.published,
+      published: !!rec?.published
     };
     el.title && (el.title.value = rec?.title || "");
     el.slug && (el.slug.value = rec?.slug || "");
@@ -192,18 +172,15 @@ export async function initEditor() {
     updatePermalink(rec?.slug || "");
 
     if (rec?.published_at && el.pubdate && el.pubtime) {
-      const dt = new Date(rec.published_at);
-      const pad = (n) => String(n).padStart(2, "0");
+      const dt = new Date(rec.published_at); const pad = (n) => String(n).padStart(2, "0");
       el.pubdate.value = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
       el.pubtime.value = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     } else {
-      el.pubdate && (el.pubdate.value = "");
-      el.pubtime && (el.pubtime.value = "");
+      el.pubdate && (el.pubdate.value = ""); el.pubtime && (el.pubtime.value = "");
     }
 
     mde && mde.value(rec?.body_md || "");
     selectRowInList(state.id);
-    refreshSaveButtonLabel();
   }
 
   // ── 목록 ──
@@ -215,8 +192,7 @@ export async function initEditor() {
       renderList();
       setHint(lastList.length ? "" : "글이 없습니다. New로 작성해 보세요.", 3000);
     } catch (e) {
-      console.error(e);
-      setHint("목록 로드 실패: " + (e?.message || e));
+      console.error(e); setHint("목록 로드 실패: " + (e?.message || e));
     }
   }
 
@@ -238,34 +214,21 @@ export async function initEditor() {
     el.list.innerHTML = filtered.map((r) => {
       const dateStr = formatDateTime(r.published_at || r.updated_at || r.created_at);
       const status = r.published ? "published" : "draft";
-      const badgeStyle = r.published
-        ? "background:#e6f4ea;color:#0f5132"
-        : "background:#fdecef;color:#842029";
-
-      const tagsArr = Array.isArray(r.tags)
-        ? r.tags
-        : (r.tags ? String(r.tags).split(",").map(s=>s.trim()).filter(Boolean) : []);
-
-      const tagsHtml = tagsArr.map(t =>
-        `<span class="tag" style="font-size:11px;padding:2px 6px;border-radius:6px;background:#f1f5f9">${escapeHtml(t)}</span>`
-      ).join("");
+      const badgeStyle = r.published ? "background:#e6f4ea;color:#0f5132" : "background:#fdecef;color:#842029";
+      const tagsArr = Array.isArray(r.tags) ? r.tags : (r.tags ? String(r.tags).split(",").map(s=>s.trim()).filter(Boolean) : []);
+      const tagsHtml = tagsArr.map(t => `<span class="tag" style="font-size:11px;padding:2px 6px;border-radius:6px;background:#f1f5f9">${escapeHtml(t)}</span>`).join("");
 
       return `
         <div class="virtual-row" role="option" data-id="${r.id}" aria-selected="false" tabindex="0">
           <div class="row" style="display:flex;gap:10px;align-items:center">
-            <strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-              ${escapeHtml(r.title || "(untitled)")}
-            </strong>
+            <strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.title || "(untitled)")}</strong>
             <span style="font-size:12px;opacity:.7">${escapeHtml(r.slug || "")}</span>
             <div class="meta" style="margin-left:auto;display:flex;gap:8px;align-items:center;font-size:12px;">
               <span class="badge" style="padding:2px 8px;border-radius:999px;${badgeStyle}">${status}</span>
               <span>${escapeHtml(dateStr)}</span>
             </div>
           </div>
-          ${tagsArr.length
-            ? `<div class="tags" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${tagsHtml}</div>`
-            : ""
-          }
+          ${tagsArr.length ? `<div class="tags" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${tagsHtml}</div>` : ""}
         </div>`;
     }).join("");
 
@@ -273,21 +236,14 @@ export async function initEditor() {
       row.addEventListener("click", async () => {
         const id = Number(row.getAttribute("data-id") || "0");
         if (!id) return;
-        try {
-          const j = await apiGet("/api/posts/" + id);
-          useRecord(asItem(j));
-        } catch (e) {
-          console.error(e);
-          setHint("항목 로드 실패");
-        }
+        try { const j = await apiGet("/api/posts/" + id); useRecord(asItem(j)); }
+        catch (e) { console.error(e); setHint("항목 로드 실패"); }
       });
-      row.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); }
-      });
+      row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); } });
     });
   }
 
-  // ── 단일 Save(토글 상태 그대로 적용) ──
+  // ── 저장(토글 상태 그대로 적용) ──
   async function actionApply() {
     const data = readForm();
     const wantPub = data.published;
@@ -329,7 +285,7 @@ export async function initEditor() {
     const md = mde ? mde.value() : "";
     try {
       const j = await apiSend("/api/posts/preview", "POST", { md });
-      const html = (j && j.html) ? j.html : "<p>(preview failed)</p>";
+      const html = j?.html ? j.html : "<p>(preview failed)</p>";
       el.previewFrame.srcdoc = `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/assets/style.css"><article class="post">${html}</article>`;
     } catch (e) {
       el.previewFrame.srcdoc = `<div class="preview-error">미리보기 실패: ${escapeHtml(e?.message || String(e))}</div>`;
@@ -338,27 +294,14 @@ export async function initEditor() {
   function togglePreview() {
     if (!el.previewPane || !el.previewBtn) return;
     const on = el.previewPane.hasAttribute("hidden");
-    if (on) {
-      el.previewPane.removeAttribute("hidden");
-      el.previewBtn.setAttribute("aria-pressed", "true");
-      updatePreview();
-    } else {
-      el.previewPane.setAttribute("hidden", "");
-      el.previewBtn.setAttribute("aria-pressed", "false");
-    }
-  }
-
-  // Save 라벨 토글
-  function refreshSaveButtonLabel() {
-    if (!el.btnSave) return;
-    el.btnSave.textContent = wantsPublished() ? "Save (Publish)" : "Save (Draft)";
+    if (on) { el.previewPane.removeAttribute("hidden"); el.previewBtn.setAttribute("aria-pressed", "true"); updatePreview(); }
+    else { el.previewPane.setAttribute("hidden", ""); el.previewBtn.setAttribute("aria-pressed", "false"); }
   }
 
   // ── 바인딩 ──
   el.btnNew && el.btnNew.addEventListener("click", (e)=>{ e.preventDefault();
     useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
     setHint("새 글");
-    refreshSaveButtonLabel();
   });
   el.btnSave && el.btnSave.addEventListener("click", (e)=>{ e.preventDefault();
     actionApply().catch(err => { console.error(err); setHint("저장 실패: " + (err?.message || err)); });
@@ -370,41 +313,28 @@ export async function initEditor() {
     setHint("삭제 완료", 2000);
     await loadList();
     useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
-    refreshSaveButtonLabel();
   });
   el.previewBtn && el.previewBtn.addEventListener("click", (e)=>{ e.preventDefault(); togglePreview(); });
 
   el.title && el.title.addEventListener("input", () => {
-    if (!state.id) {
-      const s = slugify(el.title.value);
-      el.slug && (el.slug.value = s);
-      updatePermalink(s);
-    }
+    if (!state.id) { const s = slugify(el.title.value); el.slug && (el.slug.value = s); updatePermalink(s); }
   });
   el.slug && el.slug.addEventListener("input", () => updatePermalink(el.slug.value));
   el.isPage && el.isPage.addEventListener("change", () => {
-    const s = el.slug ? el.slug.value : (state.slug || "");
-    updatePermalink(s);
+    const s = el.slug ? el.slug.value : (state.slug || ""); updatePermalink(s);
   });
   el.publishedToggle && el.publishedToggle.addEventListener("change", () => {
     el.status && (el.status.textContent = wantsPublished() ? "published" : "draft");
-    refreshSaveButtonLabel();
   });
   el.search && el.search.addEventListener("input", renderList);
   el.filter && el.filter.addEventListener("change", renderList);
 
   // Ctrl/Cmd+S → 저장
-  window.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
-      e.preventDefault();
-      el.btnSave?.click();
-    }
-  });
+  window.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); el.btnSave?.click(); } });
 
   // ── 부팅 ──
   try { await ensureEditor(); } catch (e) { console.error(e); setHint(e?.message || "에디터 로드 실패"); }
   await loadList();
   useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
-  refreshSaveButtonLabel();
   setHint("에디터 준비됨", 1500);
 }
