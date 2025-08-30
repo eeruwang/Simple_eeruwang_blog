@@ -407,18 +407,18 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
 
           const { rows: ins } = await query(
             `insert into posts
-             (title, body_md, slug, tags, excerpt, is_page, published, published_at, cover_url)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-             returning id, title, slug, published, published_at`,
+            (title, body_md, slug, tags, excerpt, is_page, published, published_at, cover_url)
+            values ($1,$2,$3,$4::text[],$5,$6::boolean,$7::boolean,$8::timestamptz,$9)
+            returning id, title, slug, published, published_at`,
             [
               b.title || "(untitled)",
               b.body_md ?? "",
               uniqueSlug,
-              tagsArr,
+              tagsArr,                  // ::text[] 로 캐스팅
               b.excerpt ?? "",
-              !!b.is_page,
-              published,
-              publishedAtFinal,
+              !!b.is_page,              // ::boolean
+              published,                // ::boolean
+              publishedAtFinal,         // ::timestamptz (null 가능)
               b.cover_url ?? null,
             ]
           );
@@ -441,9 +441,10 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     }
   }
 
+
   // 읽기: GET /api/posts/:id  → 위 GET 블록에서 처리
 
-  // 수정: PUT /api/posts/:id
+  // 수정: PUT/PATCH /api/posts/:id
   if ((request.method === "PUT" || request.method === "PATCH") && pathname.startsWith("/api/posts/")) {
     if (!requireEditor(request, env)) return json({ error: "unauthorized" }, 401);
     const m = pathname.match(/^\/api\/posts\/(\d+)$/);
@@ -454,11 +455,14 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     try {
       const updated = await db.tx(async ({ query }) => {
         // 현재 값
-        const { rows: curRows } = await query(`select id, slug, published, published_at from posts where id=$1 limit 1`, [id]);
+        const { rows: curRows } = await query(
+          `select id, slug, published, published_at from posts where id=$1 limit 1`,
+          [id]
+        );
         if (!curRows.length) throw new Error("not found");
         const cur = curRows[0];
 
-        // slug 처리(변경 요청 있을 때만 유니크 확보)
+        // slug 유니크 처리
         let nextSlug = cur.slug as string;
         if (typeof body.slug === "string" && body.slug.trim() !== "" && body.slug !== nextSlug) {
           nextSlug = await ensureUniqueSlug({ query }, String(body.slug));
@@ -468,9 +472,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
           ? body.tags.map((x: any) => String(x).trim()).filter(Boolean)
           : (typeof body.tags === "string" ? normTags(body.tags) : undefined);
 
-        // published_at 자동 채움 규칙:
-        // - published를 true로 바꾸는데 published_at 미지정 → now()
-        // - 그 외엔 명시값만 반영(자동 null 처리하지 않음)
+        // published_at 자동 채움 규칙
         let publishedAtValue: string | null | undefined = undefined;
         if (typeof body.published === "boolean") {
           const nextPub = !!body.published;
@@ -482,31 +484,39 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
           publishedAtValue = body.published_at ? String(body.published_at) : null;
         }
 
+        // ✅ 값 배열 길이 기준으로 자리표시자 인덱스 생성 + 컬럼별 캐스팅
         const fields: string[] = [];
         const vals: any[] = [];
-        const push = (frag: string, v: any) => { fields.push(frag); vals.push(v); };
+        const add = (col: string, value: any, cast: string = "") => {
+          const i = vals.length + 1;
+          fields.push(`${col}=$${i}${cast}`);
+          vals.push(value);
+        };
 
-        if (typeof body.title === "string")      push(`title=$${fields.length+1}`, body.title || "(untitled)");
-        if (typeof body.body_md === "string")    push(`body_md=$${fields.length+1}`, body.body_md ?? "");
-        if (typeof body.excerpt === "string")    push(`excerpt=$${fields.length+1}`, body.excerpt ?? "");
-        if (typeof body.cover_url === "string")  push(`cover_url=$${fields.length+1}`, body.cover_url || null);
-        if (typeof body.is_page === "boolean")   push(`is_page=$${fields.length+1}`, !!body.is_page);
-        if (typeof body.published === "boolean") push(`published=$${fields.length+1}`, !!body.published);
-        if (typeof nextSlug === "string" && nextSlug !== cur.slug) push(`slug=$${fields.length+1}`, nextSlug);
-        if (typeof tagsArr !== "undefined")      push(`tags=$${fields.length+1}`, tagsArr);
-        if (typeof publishedAtValue !== "undefined") push(`published_at=$${fields.length+1}`, publishedAtValue);
+        if (typeof body.title === "string")        add("title", body.title || "(untitled)");
+        if (typeof body.body_md === "string")      add("body_md", body.body_md ?? "");
+        if (typeof body.excerpt === "string")      add("excerpt", body.excerpt ?? "");
+        if (typeof body.cover_url === "string")    add("cover_url", body.cover_url || null);
+        if (typeof body.is_page === "boolean")     add("is_page", !!body.is_page, "::boolean");
+        if (typeof body.published === "boolean")   add("published", !!body.published, "::boolean");
+        if (typeof nextSlug === "string" && nextSlug !== cur.slug) add("slug", nextSlug);
+        if (typeof tagsArr !== "undefined")        add("tags", tagsArr, "::text[]");
+        if (typeof publishedAtValue !== "undefined") add("published_at", publishedAtValue, "::timestamptz");
 
-        // 항상 업데이트 타임스탬프
+        // 항상 업데이트 타임스탬프(파라미터 없음)
         fields.push(`updated_at=now()`);
 
-        if (!fields.length) {
-          const { rows } = await query(`select id, title, slug, published, published_at from posts where id=$1`, [id]);
+        if (!vals.length) {
+          const { rows } = await query(
+            `select id, title, slug, published, published_at from posts where id=$1`,
+            [id]
+          );
           return rows[0];
         }
 
         const { rows: upd } = await query(
-          `update posts set ${fields.join(", ")} where id=$${fields.length+1}
-           returning id, title, slug, published, published_at`,
+          `update posts set ${fields.join(", ")} where id=$${vals.length + 1}
+          returning id, title, slug, published, published_at`,
           [...vals, id]
         );
         return upd[0];
@@ -520,6 +530,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       return json({ error: msg }, code);
     }
   }
+
 
   // 삭제: DELETE /api/posts/:id
   if (request.method === "DELETE" && pathname.startsWith("/api/posts/")) {
