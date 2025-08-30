@@ -179,7 +179,7 @@ export async function renderPostPage(
 
   // 🔁 한 줄 교체 핵심: 각주 치환 → 서버에서 마크다운 → HTML(+sanitize)
   const { md: mdWithFoot, footer } = applyFootnotes(mdFinal);
-  const contentHtml = mdToSafeHtml(mdWithFoot) + (bibHtml || "") + (footer || "") + (bibDebug || "");
+  const contentHtml = mdToSafeHtml(mdWithFoot) + (footer || "") + (bibHtml || "") + (bibDebug || "");
 
   // 클라이언트용 스크립트는 최소화(뒤로가기만 유지). marked CDN 제거!
   const headExtra = `

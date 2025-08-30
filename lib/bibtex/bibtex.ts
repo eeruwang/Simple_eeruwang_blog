@@ -486,19 +486,23 @@ function pickFormatter(style = "harvard"): (e: BibEntry) => string {
   return fmtEntryHarvard;
 }
 
+// lib/bibtex/bibtex.ts
 function generateBibliographyHtml(entries: BibEntry[], style = "harvard"): string {
   if (!entries.length) return "";
   const fmt = pickFormatter(style);
-  const items = entries.map(e => `<li id="ref-${esc(e.citationKey)}">${fmt(e)}</li>`).join("\n");
+  const items = entries.map(e =>
+    `<p id="ref-${esc(e.citationKey)}" class="bib-entry">${fmt(e)}</p>`
+  ).join("\n");
 
   return `
-  <section class="bibliography footnotes" role="doc-bibliography" aria-labelledby="bib-h">
-  <h3 id="bib-h"><strong>Bibliography</strong></h3>
+<section class="bibliography footnotes" role="doc-bibliography" aria-labelledby="bib-h">
+  <p id="bib-h" class="footnotes-title"><strong>Bibliography</strong></p>
   <div class="bib-block">
     ${items}
-  </ul>
-  </section>`;
+  </div>
+</section>`;
 }
+
 
 
 
