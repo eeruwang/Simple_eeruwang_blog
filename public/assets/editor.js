@@ -26,7 +26,7 @@ export async function initEditor() {
       const t1 = localStorage.getItem("editor_token"); if (t1) return t1;
       const t2 = localStorage.getItem("x-editor-token"); if (t2) return t2;
     } catch {}
-    const m = document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/);
+    const m = document.cookie.match(/(?:^|\s*;\s*)editor_token=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : "";
   }
   function authHeaders(h) {
@@ -51,6 +51,15 @@ export async function initEditor() {
     let j; try { j = JSON.parse(txt); } catch {}
     if (!r.ok) throw new Error((j && j.error) || r.statusText || (method + " " + url + " failed"));
     return j;
+  }
+
+  // ✅ API 응답 언래핑 유틸: {item} / {updated} / {created:[0]} / raw 다 대응
+  function asItem(resp) {
+    if (!resp) return null;
+    if (resp.item) return resp.item;
+    if (resp.updated) return resp.updated;
+    if (resp.created && Array.isArray(resp.created) && resp.created[0]) return resp.created[0];
+    return resp;
   }
 
   // ----- DOM refs -----
@@ -98,12 +107,11 @@ export async function initEditor() {
   }
 
   function computePermalink(slug) {
-    // 체크박스가 있으면 그 값, 없으면 state를 신뢰
     const isPage = el.isPage ? !!el.isPage.checked : !!state.is_page;
     const base = isPage ? "/" : "/post/";
     const s = String(slug || "").trim();
     return base + (s ? encodeURIComponent(s) : "");
-}
+  }
 
   function slugify(s) {
     return String(s || "")
@@ -138,6 +146,7 @@ export async function initEditor() {
   }
 
   function useRecord(rec) {
+    if (!rec) return;
     state = {
       id: rec && rec.id != null ? rec.id : null,
       slug: rec && rec.slug ? rec.slug : "",
@@ -170,7 +179,6 @@ export async function initEditor() {
   // ----- 목록 -----
   let lastList = [];
   async function loadList() {
-    // setHint("목록 불러오는 중…");
     try {
       const j = await apiGet("/api/posts?limit=1000&offset=0");
       lastList = Array.isArray(j.list) ? j.list : [];
@@ -213,7 +221,8 @@ export async function initEditor() {
         const id = Number(row.getAttribute("data-id") || "0");
         if (!id) return;
         try {
-          const rec = await apiGet("/api/posts/" + id);
+          const j = await apiGet("/api/posts/" + id);
+          const rec = asItem(j);             // ✅ {item} 대응
           useRecord(rec);
         } catch (e) {
           console.error(e);
@@ -254,19 +263,21 @@ export async function initEditor() {
     const data = readForm();
     data.published = false;
     const payload = { ...data, published_at: null };
-    let rec;
+
+    let j;
     if (state.id) {
-      rec = await apiSend("/api/posts/" + state.id, "PATCH", payload);
+      j = await apiSend("/api/posts/" + state.id, "PATCH", payload);
       setHint("임시저장 완료", 2000);
     } else {
-      const j = await apiSend("/api/posts", "POST", payload);
-      rec = j && j.created ? j.created[0] : null;
+      j = await apiSend("/api/posts", "POST", payload);
       setHint("초안 생성 완료", 2000);
     }
     await loadList();
+
+    const rec = asItem(j);                 // ✅ 업데이트/생성 응답 언래핑
     if (rec && rec.id) {
       const full = await apiGet("/api/posts/" + rec.id);
-      useRecord(full);
+      useRecord(asItem(full));
     }
   }
 
@@ -274,19 +285,21 @@ export async function initEditor() {
     const data = readForm();
     data.published = true;
     const published_at = getPublishAtFromInputs();
-    let rec;
+
+    let j;
     if (state.id) {
-      rec = await apiSend("/api/posts/" + state.id, "PATCH", { ...data, published_at });
+      j = await apiSend("/api/posts/" + state.id, "PATCH", { ...data, published_at });
       setHint("발행 완료", 2000);
     } else {
-      const j = await apiSend("/api/posts", "POST", { ...data, published_at });
-      rec = j && j.created ? j.created[0] : null;
+      j = await apiSend("/api/posts", "POST", { ...data, published_at });
       setHint("발행 완료", 2000);
     }
     await loadList();
+
+    const rec = asItem(j);                 // ✅ 업데이트/생성 응답 언래핑
     if (rec && rec.id) {
       const full = await apiGet("/api/posts/" + rec.id);
-      useRecord(full);
+      useRecord(asItem(full));
     }
   }
 
@@ -315,14 +328,12 @@ export async function initEditor() {
     }
   }
 
-
   function togglePreview() {
     if (!el.previewPane || !el.previewBtn) return;
     const on = el.previewPane.hasAttribute("hidden");
     if (on) {
       el.previewPane.removeAttribute("hidden");
       el.previewBtn.setAttribute("aria-pressed", "true");
-      // 서버 렌더 프리뷰
       updatePreview();
     } else {
       el.previewPane.setAttribute("hidden", "");
