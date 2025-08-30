@@ -127,5 +127,5 @@ src/
 - Original Font: *Inconsolata* — © Raph Levien  
 - Patched Distribution: *Inconsolata Nerd Font* — by Nerd Fonts  
 - License: **SIL Open Font License 1.1 (OFL-1.1)**  
-- Repository path (example): `public/assets/InconsolataNerdFont-Regular.ttf`  
-- 재배포 시 권장: 저장소에 **OFL-1.1 전문**을 함께 포함하세요 (예: `LICENSES/OFL-1.1.txt`).
+- Repository path: `public/assets/InconsolataNerdFont-Regular.ttf`  
+- 재배포 시 권장: 저장소에 [**OFL-1.1 전문**](https://openfontlicense.org/open-font-license-official-text/)을 함께 포함하세요.
