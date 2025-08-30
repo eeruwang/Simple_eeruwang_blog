@@ -117,9 +117,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // 0) 헬스체크
-    if (path === "/api/ping" && req.method === "GET") {
-      setSecurityHeadersVercel(res);
-      return res.status(200).json({ ok: true });
+    if (path === "/api/diag-db" && req.method === "GET") {
+      try {
+        const r = await pingDb();
+        setSecurityHeadersVercel(res);
+        return res.status(200).json({ ok:true, ...r });
+      } catch (e:any) {
+        setSecurityHeadersVercel(res);
+        return res.status(500).json({ ok:false, error: String(e?.message||e) });
+      }
     }
 
     // 1) 에디터 키 체크

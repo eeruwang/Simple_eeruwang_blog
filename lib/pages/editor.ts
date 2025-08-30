@@ -4,7 +4,7 @@
 export type EditorPageOptions = { version?: string };
 
 export function renderEditorHTML(opts: EditorPageOptions = {}): string {
-  const ver = opts.version || "v8";
+  const ver = opts.version || "v12";
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -13,10 +13,12 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <meta name="robots" content="noindex, nofollow">
 <title>Editor</title>
 
-<!-- EasyMDE (CDN 고정) -->
+<!-- EasyMDE가 필요로 하는 Font Awesome 4 아이콘 + EasyMDE 자체 -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
 <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 
+<!-- 사이트 공통 스타일 -->
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body class="editor-page">
@@ -172,7 +174,9 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       const existing = getToken();
       if (await checkKey(existing)) {
         if (lock) lock.style.display = "none";
+        // CSS 양쪽 케이스 모두 만족
         document.body.classList.add("authed");
+        document.body.dataset.auth = "1";
         await bootEditor();
         return;
       }
@@ -180,6 +184,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       // 수동 로그인
       if (lock) lock.style.display = "";
       document.body.classList.remove("authed");
+      delete document.body.dataset.auth;
 
       async function submit(){
         const tok = input && input.value ? String(input.value).trim() : "";
@@ -191,6 +196,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
           if (hint) hint.textContent = "";
           if (lock) lock.style.display = "none";
           document.body.classList.add("authed");
+          document.body.dataset.auth = "1";
           await bootEditor();
         } else {
           if (hint) hint.textContent = "비밀번호가 올바르지 않습니다.";

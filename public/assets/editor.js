@@ -324,7 +324,13 @@ export async function initEditor() {
   // ----- 바인딩 -----
   el.btnNew && el.btnNew.addEventListener("click", (e)=>{ e.preventDefault(); actionNew().catch(console.error); });
   el.btnSave && el.btnSave.addEventListener("click", (e)=>{ e.preventDefault(); actionSaveDraft().catch(err => { console.error(err); setHint("저장 실패"); }); });
-  el.btnPublish && el.btnPublish.addEventListener("click", (e)=>{ e.preventDefault(); actionPublish().catch(err => { console.error(err); setHint("발행 실패"); }); });
+  el.btnPublish && el.btnPublish.addEventListener("click", (e)=>{
+    e.preventDefault();
+    actionPublish().catch(err => {
+      console.error(err);
+      setHint("발행 실패: " + (err && err.message ? err.message : err), 4000);
+    });
+  });
   el.btnDelete && el.btnDelete.addEventListener("click", (e)=>{ e.preventDefault(); actionDelete().catch(err => { console.error(err); setHint("삭제 실패"); }); });
   el.previewBtn && el.previewBtn.addEventListener("click", (e)=>{ e.preventDefault(); togglePreview(); });
 
