@@ -608,15 +608,15 @@ body.side-open .side-backdrop{
   body.side-open .side-backdrop{ display:block; pointer-events:auto; }
 }
 
-/* ===== Bibliography (footnotes 톤 + 불릿 제거 + 행걸이 들여쓰기) ===== */
+/* ===== Bibliography ===== */
 #content .bibliography{ margin-top:22px; border-top:1px solid var(--line); padding-top:10px; }
 
-/* 제목: h2 대신 볼드 문장 사용 시 */
+/* 제목(볼드 문장) 톤 */
 #content .bibliography .footnotes-title{
   margin:0 0 8px; font-size:.95rem; color:var(--muted); font-weight:600;
 }
 
-/* 리스트 방식(<ul class="footnotes-list"> 또는 <ul class="bib-list">)일 때 */
+/* 리스트로 출력될 때 불릿/숫자 제거 */
 #content .bibliography ul,
 #content .bibliography ol,
 #content .bibliography .footnotes-list,
@@ -631,9 +631,9 @@ body.side-open .side-backdrop{
   text-indent:-1.6rem; /* 행걸이 들여쓰기 */
 }
 
-/* 문단 방식(<p class="bib-entry">)일 때 */
+/* 문단(<p class="bib-entry">) 방식일 때 */
 #content .bibliography .bib-block{ margin:0; padding:0; }
 #content .bibliography .bib-entry{
   margin:0 0 .65rem; line-height:1.6;
-  padding-left:1.6rem; text-indent:-1.6rem; /* 행걸이 들여쓰기 */
+  padding-left:1.6rem; text-indent:-1.6rem;
 }
