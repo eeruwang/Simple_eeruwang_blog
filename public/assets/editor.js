@@ -9,14 +9,48 @@ export async function initEditor() {
     if (msg && ms) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, ms);
   }
 
-  // EasyMDE 로드 대기
-  async function ensureEasyMDE() {
-    let t = 0;
-    while (typeof window.EasyMDE !== "function" && t < 50) { await new Promise(r => setTimeout(r, 50)); t++; }
-    if (typeof window.EasyMDE !== "function") throw new Error("EasyMDE가 로드되지 않았습니다(CDN 차단/지연).");
+  /* ───────────────── EasyMDE 로드 보강 ───────────────── */
+  function injectEasyMDEAssets() {
+    // 중복 삽입 방지
+    if (!document.querySelector('link[data-easymde]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/easymde/dist/easymde.min.css";
+      link.setAttribute("data-easymde", "1");
+      document.head.appendChild(link);
+    }
+    if (!document.querySelector('script[data-easymde]')) {
+      const scr = document.createElement("script");
+      scr.src = "https://unpkg.com/easymde/dist/easymde.min.js";
+      scr.defer = true;
+      scr.setAttribute("data-easymde", "1");
+      document.head.appendChild(scr);
+    }
   }
 
-  // ── 요청 유틸 ──
+  async function ensureEasyMDE() {
+    // 이미 로드됐으면 패스
+    if (typeof window.EasyMDE === "function") return;
+
+    // 1차: 기존 <script>가 로딩되길 대기 (최대 ~5초)
+    let t = 0;
+    while (typeof window.EasyMDE !== "function" && t < 100) {
+      await new Promise(r => setTimeout(r, 50)); t++;
+    }
+    if (typeof window.EasyMDE === "function") return;
+
+    // 2차: 동적 삽입 후 다시 대기 (최대 ~10초)
+    injectEasyMDEAssets();
+    t = 0;
+    while (typeof window.EasyMDE !== "function" && t < 200) {
+      await new Promise(r => setTimeout(r, 50)); t++;
+    }
+    if (typeof window.EasyMDE !== "function") {
+      throw new Error("EasyMDE가 로드되지 않았습니다(CDN 차단/지연).");
+    }
+  }
+
+  /* ───────────────── 요청 유틸 ───────────────── */
   function getToken() {
     try {
       const cand = ["editor_token","x-editor-token","editorToken","xEditorToken"];
@@ -56,7 +90,7 @@ export async function initEditor() {
     return resp;
   }
 
-  // ── 헬퍼 ──
+  /* ───────────────── 헬퍼 ───────────────── */
   function slugify(s) {
     return String(s || "").trim().toLowerCase()
       .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
@@ -74,7 +108,7 @@ export async function initEditor() {
     return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   }
 
-  // ── DOM refs ──
+  /* ───────────────── DOM refs ───────────────── */
   const el = {
     list: $("#postVirtualList"),
     search: $("#searchInput"),
@@ -100,21 +134,42 @@ export async function initEditor() {
     attach: $("#attach"),
   };
 
-  // ── 에디터 ──
+  /* ───────────────── EasyMDE 인스턴스 ───────────────── */
   let mde = null;
   async function ensureEditor() {
     await ensureEasyMDE();
     if (mde) return mde;
     if (!el.md) throw new Error("#md textarea not found");
+
+    // 툴바 명시 + 이미지 버튼(파일 선택 열기)
+    const toolbar = [
+      "bold","italic","heading","|",
+      "quote","unordered-list","ordered-list","|",
+      "link",
+      {
+        name: "image-upload",
+        action: () => el.attach && el.attach.click(),
+        className: "fa fa-picture-o",
+        title: "Insert image (upload)",
+      },
+      "|","preview","side-by-side","fullscreen","guide"
+    ];
+
     mde = new window.EasyMDE({
-      element: el.md, autofocus: false, spellChecker: false,
-      autosave: { enabled: false }, status: false, minHeight: "300px",
-      placeholder: "Write in Markdown…", autoDownloadFontAwesome: false
+      element: el.md,
+      autofocus: false,
+      spellChecker: false,
+      autosave: { enabled: false },
+      status: false,
+      minHeight: "300px",
+      placeholder: "Write in Markdown…",
+      autoDownloadFontAwesome: false,
+      toolbar,
     });
     return mde;
   }
 
-  // ── 상태 & 유틸 ──
+  /* ───────────────── 상태 & 유틸 ───────────────── */
   let state = { id: null, slug: "", is_page: false, published: false };
   const wantsPublished = () => (el.publishedToggle ? !!el.publishedToggle.checked : false);
 
@@ -185,7 +240,7 @@ export async function initEditor() {
     selectRowInList(state.id);
   }
 
-  // ── 목록 ──
+  /* ───────────────── 목록 ───────────────── */
   let lastList = [];
   async function loadList() {
     try {
@@ -245,7 +300,7 @@ export async function initEditor() {
     });
   }
 
-  // ── EasyMDE 커서에 Markdown 삽입 ──
+  /* ───────────────── EasyMDE 커서에 Markdown 삽입 ───────────────── */
   function insertMarkdownAtCursor(mdText) {
     if (mde && mde.codemirror) {
       const cm = mde.codemirror;
@@ -268,7 +323,7 @@ export async function initEditor() {
     }
   }
 
-  // ── 이미지 업로드 → Blob → 본문 삽입 ──
+  /* ───────────────── 이미지 업로드 → Blob → 본문 삽입 ───────────────── */
   async function uploadImageToBlob(file) {
     const tok = getToken();
     if (!tok) throw new Error("로그인 토큰이 없습니다.");
@@ -276,7 +331,7 @@ export async function initEditor() {
     fd.set("file", file);
     const r = await fetch("/api/upload", {
       method: "POST",
-      headers: { "x-editor-token": tok }, // content-type 지정 금지 (브라우저가 자동 설정)
+      headers: { "x-editor-token": tok }, // content-type 지정 금지
       body: fd,
     });
     const j = await r.json().catch(() => ({}));
@@ -297,12 +352,10 @@ export async function initEditor() {
       try {
         setHint("이미지 업로드 중…");
         const urls = [];
-        for (const f of files) {
-          urls.push(await uploadImageToBlob(f));
-        }
+        for (const f of files) urls.push(await uploadImageToBlob(f));
         const block = urls.map(u => `![](${u})`).join("\n\n") + "\n";
         insertMarkdownAtCursor(block);
-        setHint(\`이미지 \${urls.length}개 삽입 완료\`, 2000);
+        setHint(`이미지 ${urls.length}개 삽입 완료`, 2000);
       } catch (e) {
         console.error(e);
         setHint("이미지 업로드 실패: " + (e?.message || e), 4000);
@@ -312,7 +365,7 @@ export async function initEditor() {
     });
   }
 
-  // ── 저장(토글 상태 그대로 적용) ──
+  /* ───────────────── 저장(토글 상태 그대로 적용) ───────────────── */
   async function actionApply() {
     const data = readForm();
     const wantPub = data.published;
@@ -325,7 +378,7 @@ export async function initEditor() {
       } else {
         payload.published_at = null;
       }
-      const j = await apiSend("/api/posts/" + state.id, "PUT", payload);
+      await apiSend("/api/posts/" + state.id, "PUT", payload);
       setHint(wantPub ? "발행 적용 완료" : "초안으로 저장 완료", 2000);
       await loadList();
       const full = await apiGet("/api/posts/" + state.id);
@@ -348,16 +401,16 @@ export async function initEditor() {
     }
   }
 
-  // ── 미리보기 ──
+  /* ───────────────── 미리보기 ───────────────── */
   async function updatePreview() {
     if (!el.previewFrame) return;
     const md = mde ? mde.value() : "";
     try {
       const j = await apiSend("/api/posts/preview", "POST", { md });
       const html = j?.html ? j.html : "<p>(preview failed)</p>";
-      el.previewFrame.srcdoc = \`<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/assets/style.css"><article class="post">\${html}</article>\`;
+      el.previewFrame.srcdoc = `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/assets/style.css"><article class="post">${html}</article>`;
     } catch (e) {
-      el.previewFrame.srcdoc = \`<div class="preview-error">미리보기 실패: \${escapeHtml(e?.message || String(e))}</div>\`;
+      el.previewFrame.srcdoc = `<div class="preview-error">미리보기 실패: ${escapeHtml(e?.message || String(e))}</div>`;
     }
   }
   function togglePreview() {
@@ -367,7 +420,7 @@ export async function initEditor() {
     else { el.previewPane.setAttribute("hidden", ""); el.previewBtn.setAttribute("aria-pressed", "false"); }
   }
 
-  // ── 바인딩 ──
+  /* ───────────────── 바인딩 ───────────────── */
   el.btnNew && el.btnNew.addEventListener("click", (e)=>{ e.preventDefault();
     useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
     setHint("새 글");
@@ -401,9 +454,9 @@ export async function initEditor() {
   // Ctrl/Cmd+S → 저장
   window.addEventListener("keydown", (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); el.btnSave?.click(); } });
 
-  // ── 부팅 ──
+  /* ───────────────── 부팅 ───────────────── */
   try { await ensureEditor(); } catch (e) { console.error(e); setHint(e?.message || "에디터 로드 실패"); }
-  bindImageUpload(); // ← 이미지 업로드 바인딩
+  bindImageUpload();
   await loadList();
   useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
   setHint("에디터 준비됨", 1500);
