@@ -232,6 +232,55 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       window.addEventListener('resize',()=>{ if(!isM()) close(); });
     })();
   </script>
+
+  <!-- 이미지 업로드 → 본문 삽입 -->
+  <script type="module">
+    function token(){
+      try{ const t=localStorage.getItem("editor_token"); if(t) return t; }catch{}
+      const m=document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/);
+      return m?decodeURIComponent(m[1]):"";
+    }
+    async function uploadImage(file){
+      const t = token();
+      if (!t) throw new Error("에디터 토큰이 없습니다. 먼저 로그인하세요.");
+      const fd = new FormData(); fd.set("file", file);
+      const r = await fetch("/api/upload", { method:"POST", body:fd, headers:{ "x-editor-token": t }});
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok || !j || !j.url) throw new Error((j && j.error) || "upload failed"); return j.url;
+    }
+    function insertAtCursor(ta, text){
+      const s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+      const e = ta.selectionEnd   != null ? ta.selectionEnd   : ta.value.length;
+      const before=ta.value.slice(0,s), after=ta.value.slice(e);
+      ta.value = before + text + after;
+      const pos = s + text.length;
+      if (ta.setSelectionRange) ta.setSelectionRange(pos,pos);
+      ta.dispatchEvent(new Event("input",{bubbles:true}));
+    }
+    window.addEventListener("DOMContentLoaded", function(){
+      const btn=document.getElementById("attachBtn");
+      const input=document.getElementById("attach");
+      const ta=document.getElementById("md");
+      const hint=document.getElementById("hint");
+      if (!btn||!input||!ta) return;
+      btn.addEventListener("click", ()=>{ input && input.click && input.click(); });
+      input.addEventListener("change", async ()=>{
+        const files = input.files ? Array.from(input.files) : [];
+        if (!files.length) return;
+        try {
+          const urls=[]; for (let i=0;i<files.length;i++){ urls.push(await uploadImage(files[i])); }
+          insertAtCursor(ta, urls.map(u => "![](" + u + ")").join("\\n\\n"));
+          if (hint) hint.textContent = "이미지 " + urls.length + "개 첨부됨.";
+        } catch(e){
+          if (hint) hint.textContent = "이미지 업로드 실패: " + (e && e.message ? e.message : String(e));
+          console.error(e);
+        } finally {
+          input.value = "";
+          setTimeout(()=>{ if (hint) hint.textContent=""; }, 4000);
+        }
+      });
+    });
+  </script>
 </body>
 </html>`;
 }
