@@ -111,10 +111,21 @@ src/
 - [ ] 404/500 커스텀 페이지
 - [ ] 간단한 사이트맵 생성기
 
-## 폰트 사용 및 라이선스 (Markdown 코드 블록)
+## License & Attribution
+이 저장소의 모든 자료는 **CC BY-NC 4.0**으로 배포됩니다.  
+상업적 사용은 금지되며, 공유·수정·재배포 시 반드시 출처를 남겨 주세요.
 
-이 프로젝트의 Markdown 코드 블록은 Inconsolata Nerd Font를 사용합니다.
-Inconsolata Nerd Font는 Nerd Fonts 프로젝트가 원본 Inconsolata(Raph Levien)를 아이콘 글리프로 패치한 배포본입니다.
-	•	원본 폰트: Inconsolata — © Raph Levien — SIL Open Font License 1.1 (OFL-1.1).  ￼
-	•	패치 배포본: Nerd Fonts의 Inconsolata Nerd Font — OFL-1.1 유지.  ￼
-	•	패치 스크립트/툴(font-patcher 등 Nerd Fonts 소스코드): MIT License.  ￼
+**표기 예시**  
+“© 2025 이루왕 — https://eeruwang.me (CC BY-NC 4.0)”
+
+---
+
+### Third-party Notice (Fonts)
+이 프로젝트는 마크다운 코드 블록에 **Inconsolata Nerd Font**를 사용합니다. 이 폰트는 **Nerd Fonts** 프로젝트가 원본 **Inconsolata**(Raph Levien)를 패치한 배포본이며, **SIL Open Font License 1.1 (OFL-1.1)**을 따릅니다.  
+> 폰트 파일은 CC BY-NC 4.0의 적용 대상이 아니며, 각자의 라이선스(OFL-1.1)를 그대로 유지합니다.
+
+- Original Font: *Inconsolata* — © Raph Levien  
+- Patched Distribution: *Inconsolata Nerd Font* — by Nerd Fonts  
+- License: **SIL Open Font License 1.1 (OFL-1.1)**  
+- Repository path (example): `public/assets/InconsolataNerdFont-Regular.ttf`  
+- 재배포 시 권장: 저장소에 **OFL-1.1 전문**을 함께 포함하세요 (예: `LICENSES/OFL-1.1.txt`).
