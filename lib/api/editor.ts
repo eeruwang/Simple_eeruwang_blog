@@ -447,47 +447,60 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
   // 수정: PUT/PATCH /api/posts/:id
   if ((request.method === "PUT" || request.method === "PATCH") && pathname.startsWith("/api/posts/")) {
     if (!requireEditor(request, env)) return json({ error: "unauthorized" }, 401);
+
     const m = pathname.match(/^\/api\/posts\/(\d+)$/);
     if (!m) return json({ error: "bad request" }, 400);
     const id = Number(m[1]);
+
     const body = await request.json().catch(() => ({}));
 
     try {
       const updated = await db.tx(async ({ query }) => {
-        // 현재 값
+        // 현재 행
         const { rows: curRows } = await query(
-          `select id, slug, published, published_at from posts where id=$1 limit 1`,
+          `select id, title, slug, body_md, tags, excerpt, is_page, published, published_at, cover_url
+            from posts where id=$1 limit 1`,
           [id]
         );
         if (!curRows.length) throw new Error("not found");
         const cur = curRows[0];
 
-        // slug 유니크 처리
+        // slug 유니크
         let nextSlug = cur.slug as string;
-        if (typeof body.slug === "string" && body.slug.trim() !== "" && body.slug !== nextSlug) {
+        if (typeof body.slug === "string" && body.slug.trim() && body.slug !== nextSlug) {
           nextSlug = await ensureUniqueSlug({ query }, String(body.slug));
         }
 
-        const tagsArr = Array.isArray(body.tags)
-          ? body.tags.map((x: any) => String(x).trim()).filter(Boolean)
-          : (typeof body.tags === "string" ? normTags(body.tags) : undefined);
+        // tags 정규화
+        const tagsArr =
+          typeof body.tags === "undefined"
+            ? undefined
+            : (Array.isArray(body.tags)
+                ? body.tags.map((x: any) => String(x).trim()).filter(Boolean)
+                : normTags(String(body.tags)));
 
-        // published_at 자동 채움 규칙
+        // published_at 자동 규칙
         let publishedAtValue: string | null | undefined = undefined;
-        if (typeof body.published === "boolean") {
-          const nextPub = !!body.published;
-          if (nextPub && (typeof body.published_at === "undefined")) {
-            if (!cur.published_at) publishedAtValue = new Date().toISOString();
+        const hasPublished = typeof body.published === "boolean";
+        const nextPub = hasPublished ? !!body.published : !!cur.published;
+
+        if (typeof body.published_at === "undefined") {
+          // 입력이 없는데 발행 상태로 바뀌고 기존에 없으면 now()
+          if (nextPub && !cur.published_at) publishedAtValue = new Date().toISOString();
+        } else {
+          // 명시(null 포함)
+          if (body.published_at) {
+            publishedAtValue = String(body.published_at);
+          } else {
+            // null 보냈는데 발행이면 now로 보정, 아니면 null 유지
+            publishedAtValue = nextPub ? new Date().toISOString() : null;
           }
         }
-        if (typeof body.published_at !== "undefined") {
-          publishedAtValue = body.published_at ? String(body.published_at) : null;
-        }
 
-        // ✅ 값 배열 길이 기준으로 자리표시자 인덱스 생성 + 컬럼별 캐스팅
+        // 동적 UPDATE 빌드 (캐스팅 포함)
         const fields: string[] = [];
         const vals: any[] = [];
-        const add = (col: string, value: any, cast: string = "") => {
+        const add = (col: string, value: any, cast = "") => {
           const i = vals.length + 1;
           fields.push(`${col}=$${i}${cast}`);
           vals.push(value);
@@ -499,16 +512,18 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         if (typeof body.cover_url === "string")    add("cover_url", body.cover_url || null);
         if (typeof body.is_page === "boolean")     add("is_page", !!body.is_page, "::boolean");
         if (typeof body.published === "boolean")   add("published", !!body.published, "::boolean");
-        if (typeof nextSlug === "string" && nextSlug !== cur.slug) add("slug", nextSlug);
+        if (nextSlug !== cur.slug)                 add("slug", nextSlug);
         if (typeof tagsArr !== "undefined")        add("tags", tagsArr, "::text[]");
         if (typeof publishedAtValue !== "undefined") add("published_at", publishedAtValue, "::timestamptz");
 
-        // 항상 업데이트 타임스탬프(파라미터 없음)
+        // 항시 갱신
         fields.push(`updated_at=now()`);
 
         if (!vals.length) {
+          // 변경 없음 → 현재값 반환
           const { rows } = await query(
-            `select id, title, slug, published, published_at from posts where id=$1`,
+            `select id, title, slug, body_md, tags, excerpt, is_page, published, published_at, cover_url, created_at, updated_at
+              from posts where id=$1`,
             [id]
           );
           return rows[0];
@@ -516,7 +531,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
 
         const { rows: upd } = await query(
           `update posts set ${fields.join(", ")} where id=$${vals.length + 1}
-          returning id, title, slug, published, published_at`,
+            returning id, title, slug, body_md, tags, excerpt, is_page, published, published_at, cover_url, created_at, updated_at`,
           [...vals, id]
         );
         return upd[0];
@@ -530,6 +545,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       return json({ error: msg }, code);
     }
   }
+
 
 
   // 삭제: DELETE /api/posts/:id

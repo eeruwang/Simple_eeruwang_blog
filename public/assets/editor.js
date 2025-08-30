@@ -23,8 +23,11 @@ export async function initEditor() {
   // ----- 토큰/헤더/요청 유틸 -----
   function getToken() {
     try {
-      const t1 = localStorage.getItem("editor_token"); if (t1) return t1;
-      const t2 = localStorage.getItem("x-editor-token"); if (t2) return t2;
+      const k = (name) => localStorage.getItem(name);
+      const cand = [
+        "editor_token", "x-editor-token", "editorToken", "xEditorToken"
+      ];
+      for (const c of cand) { const v = k(c); if (v) return v; }
     } catch {}
     const m = document.cookie.match(/(?:^|\s*;\s*)editor_token=([^;]+)/);
     return m ? decodeURIComponent(m[1]) : "";
@@ -306,7 +309,7 @@ export async function initEditor() {
 
     let j;
     if (state.id) {
-      j = await apiSend("/api/posts/" + state.id, "PATCH", payload);
+      j = await apiSend("/api/posts/" + state.id, "PUT", { ...payload });
       setHint("임시저장 완료", 2000);
     } else {
       j = await apiSend("/api/posts", "POST", payload);
