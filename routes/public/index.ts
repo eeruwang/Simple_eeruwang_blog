@@ -36,10 +36,16 @@ type ApiPost = {
 };
 
 function baseUrl(env: Env): string {
-  const fromSite = (env.SITE_URL || "").trim().replace(/\/+$/, "");
-  if (fromSite) return fromSite;
+  // 1) SITE_URL 우선 사용하되, 프로토콜이 없으면 https:// 붙임
+  let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
+  if (raw) {
+    if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
+    return raw.replace(/\/+$/, "");
+  }
+  // 2) VERCEL_URL(호스트명) 사용 시 https:// 붙임
   const vurl = (globalThis as any).process?.env?.VERCEL_URL;
   if (vurl) return `https://${String(vurl).replace(/\/+$/, "")}`;
+  // 3) 로컬 기본값
   return "http://localhost:3000";
 }
 
@@ -133,7 +139,7 @@ export async function renderIndex(env: Env, page: number = 1): Promise<Response>
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store", // 발행 즉시 반영
+      "cache-control": "no-store",
     },
   });
 }
