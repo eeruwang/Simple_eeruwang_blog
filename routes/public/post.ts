@@ -29,6 +29,7 @@ type ApiPost = {
   updated_at?: string | null;
 };
 
+/** HTML Response의 </head> 직전에 headExtra를 주입 */
 async function withSeoHead(resp: Response, headExtra: string): Promise<Response> {
   const ct = resp.headers.get("content-type") || "";
   if (!/text\/html/i.test(ct)) return resp;
@@ -44,6 +45,7 @@ async function withSeoHead(resp: Response, headExtra: string): Promise<Response>
 }
 
 function baseUrl(env: Env): string {
+  // SITE_URL이 프로토콜 없이 오면 https:// 붙여서 절대 URL로
   let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
   if (raw) {
     if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
@@ -57,14 +59,7 @@ function baseUrl(env: Env): string {
 async function fetchPublicPostBySlug(env: Env, slug: string): Promise<ApiPost | null> {
   const base = baseUrl(env);
   const url = `${base}/api/posts?slug=${encodeURIComponent(slug)}`;
-
-  // ⬇⬇ 서버 사이드 전용 헤더 — 토큰 있으면 함께 전송
-  const headers: Record<string, string> = { "cache-control": "no-store" };
-  const token =
-    String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim();
-  if (token) headers["x-editor-token"] = token;
-
-  const res = await fetch(url, { headers });
+  const res = await fetch(url, { headers: { "cache-control": "no-store" } });
   if (!res.ok) return null;
   const j = await res.json();
   const item: ApiPost | undefined = j?.item;
@@ -87,8 +82,10 @@ export async function renderPost(
   const rec = await fetchPublicPostBySlug(env, s);
   if (!rec) return new Response("Not found", { status: 404 });
 
-  const site = (env.SITE_URL || "https://example.blog").replace(/\/+$/, "");
+  // ✅ siteUrl을 항상 절대 URL로 보장해서 seoTags에 넘김
+  const site = baseUrl(env);
   const desc = rec.excerpt || deriveExcerptFromRecord(rec as any, 160) || "";
+
   const headExtra = seoTags({
     siteUrl: site,
     path: `/post/${encodeURIComponent(rec.slug)}`,
