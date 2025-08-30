@@ -75,6 +75,7 @@
 
 ## 프로젝트 구조(요약)
 ```
+
 api/[[...all]].ts          # Vercel 엔트리(모든 경로 위임)
 public/assets/*            # 사이트 CSS/JS
 server/server.ts           # 로컬 Express 엔트리
