@@ -444,7 +444,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
   // 읽기: GET /api/posts/:id  → 위 GET 블록에서 처리
 
   // 수정: PUT /api/posts/:id
-  if (request.method === "PUT" && pathname.startsWith("/api/posts/")) {
+  if ((request.method === "PUT" || request.method === "PATCH") && pathname.startsWith("/api/posts/")) {
     if (!requireEditor(request, env)) return json({ error: "unauthorized" }, 401);
     const m = pathname.match(/^\/api\/posts\/(\d+)$/);
     if (!m) return json({ error: "bad request" }, 400);
