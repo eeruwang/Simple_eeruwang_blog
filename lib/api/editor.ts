@@ -397,7 +397,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
             : normTags(b.tags);
 
           const baseSlug = slugifyForApi(b.title || "") || "post";
-          const desired = String(b.slug || baseSlug);
+          const desired = String(b.slug || baseSlug).trim().toLowerCase();
           const uniqueSlug = await ensureUniqueSlug({ query }, desired);
 
           const published = !!b.published;

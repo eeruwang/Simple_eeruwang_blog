@@ -23,7 +23,11 @@ export async function renderPage(
   const debug = !!searchParams?.get?.("debug");
 
   // ✅ 페이지 전용 조회
-  const rec = await getPageBySlug(s);
+const includeDraft =
+  searchParams?.get?.("draft") === "1" ||
+  searchParams?.get?.("preview") === "1" ||
+  searchParams?.get?.("debug") === "1";
+const rec = await getPageBySlug(s, { includeDraft });
   if (!rec || !toBool((rec as any).is_page)) {
     return new Response("Not found", { status: 404 });
   }

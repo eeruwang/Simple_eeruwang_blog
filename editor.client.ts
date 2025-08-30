@@ -102,7 +102,8 @@ export const EDITOR_CLIENT_JS: string = `
   }
   function updatePermalink(){
     if (!$permalink) return;
-    const slug = ($("#slug").value || "").trim() || slugify($("#title").value);
+    const raw  = ($("#slug").value || "").trim();
+    const slug = raw ? raw.toLowerCase() : slugify($("#title").value);
     const isPage = !!($isPage && $isPage.checked);
     $permalink.textContent = "Permalink: " + (isPage ? "/" + slug : "/post/" + slug);
   }
