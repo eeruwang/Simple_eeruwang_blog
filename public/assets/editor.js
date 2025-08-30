@@ -59,6 +59,51 @@ export async function initEditor() {
     const m = document.cookie.match(/(?:^|;\s*)(editor_token|editorToken)=([^;]+)/);
     return m ? decodeURIComponent(m[2]) : "";
   }
+  // reference.bib 업로드
+  async function uploadBibtex(file) {
+    const tok = getToken();
+    if (!tok) throw new Error("로그인 토큰이 없습니다.");
+
+    const fd = new FormData();
+    // 서버가 이름 기반으로 reference.bib 설정을 저장하므로, 이름을 고정합니다
+    fd.set("file", file, "reference.bib");
+    fd.set("name", "reference.bib");
+
+    const r = await fetch("/api/upload?overwrite=1", {
+      method: "POST",
+      headers: { "x-editor-token": tok }, // multipart는 content-type 자동
+      body: fd,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j?.ok !== true) {
+      throw new Error(j?.error || `HTTP ${r.status}`);
+    }
+    return j.url;
+  }
+
+  function bindBibtexUpload() {
+    const btn = document.getElementById("bibtexBtn");
+    const input = document.getElementById("bibtexFile");
+    if (!btn || !input) return;
+
+    btn.addEventListener("click", () => input.click());
+
+    input.addEventListener("change", async () => {
+      const f = input.files && input.files[0];
+      if (!f) return;
+      try {
+        setHint("BIBTEX 업로드 중…");
+        await uploadBibtex(f);
+        setHint("reference.bib 업로드 완료", 2000);
+        // 필요하면 미리보기 재생성 트리거 등을 넣으세요
+      } catch (e) {
+        console.error(e);
+        setHint("BIBTEX 업로드 실패: " + (e?.message || e), 4000);
+      } finally {
+        input.value = "";
+      }
+    });
+  }
   function authHeaders(h) {
     const tok = getToken(); const base = h && typeof h === "object" ? h : {};
     return tok ? { ...base, "x-editor-token": tok } : base;
@@ -474,6 +519,7 @@ export async function initEditor() {
   /* ───────────────── 부팅 ───────────────── */
   try { await ensureEditor(); } catch (e) { console.error(e); setHint(e?.message || "에디터 로드 실패"); }
   bindImageUpload();
+  bindBibtexUpload();
   await loadList();
   useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
   setHint("에디터 준비됨", 1500);
