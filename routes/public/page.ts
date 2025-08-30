@@ -5,31 +5,28 @@
  */
 
 import { getPageBySlug } from "../../lib/db/db.js";
-import { renderPostPage } from "../../views/pageview.js"; // 경로는 프로젝트 구조에 맞게 유지
+import { renderPostPage } from "../../views/pageview.js";
 
 type Env = Record<string, unknown>;
+
+const toBool = (v: unknown) =>
+  v === true || v === 1 || v === "1" || v === "t" || v === "true";
 
 export async function renderPage(
   env: Env,
   slug: string,
   searchParams?: URLSearchParams
 ): Promise<Response> {
-  const s = decodeURIComponent(String(slug || "").trim());
+  const s = String(slug || "").trim();
   if (!s) return new Response("Not found", { status: 404 });
 
-  // debug=1 이면 draft 페이지도 미리보기 허용
   const debug = !!searchParams?.get?.("debug");
 
-  try {
-    const rec = await getPageBySlug(s, { includeDraft: debug });
-    if (!rec) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    // 기존 시그니처 유지: renderPostPage(env, record, debug)
-    return await renderPostPage(env as any, rec as any, debug);
-  } catch (e: any) {
-    console.error("[page] render error:", e);
-    return new Response("Server error", { status: 500 });
+  // ✅ 페이지 전용 조회
+  const rec = await getPageBySlug(s);
+  if (!rec || !toBool((rec as any).is_page)) {
+    return new Response("Not found", { status: 404 });
   }
+
+  return await renderPostPage(env, rec as any, debug);
 }
