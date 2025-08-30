@@ -26,6 +26,7 @@ export function escapeXml(s: string = ""): string {
 }
 
 /** 본문 하단에 bibliographyHtml을 주입(중복 방지 + 안전 폴백) */
+// lib/util.ts
 export async function withBibliography(resp: Response, bibliographyHtml?: string): Promise<Response> {
   if (!bibliographyHtml || !bibliographyHtml.trim()) return resp;
 
@@ -34,26 +35,37 @@ export async function withBibliography(resp: Response, bibliographyHtml?: string
 
   const html = await resp.text();
 
-  // 이미 bibliography 섹션이 있으면 주입 생략
+  // 이미 bibliography 섹션이 있으면 중복 주입 안 함
   if (/\bclass\s*=\s*["'][^"']*\bbibliography\b/i.test(html)) {
     return new Response(html, { status: resp.status, headers: resp.headers });
   }
 
-  // 우선순위: </main> → </article> → </body> → (없으면 맨 끝)
-  let patched = html;
-  const tryInsert = (re: RegExp) => {
-    const next = patched.replace(re, `${bibliographyHtml}\n$&`);
-    const changed = next !== patched;
-    patched = next;
-    return changed;
-  };
+  // ── 주입 앵커 우선순위 ──
+  // 1) 명시적 플레이스홀더 (있으면 여기에)
+  // 2) </main> 바로 앞 (본문 영역 끝: 각주 뒤일 가능성 높음)
+  // 3) </article> 바로 앞 (본문이 article일 때)
+  // 4) <footer …> 바로 앞 (사이트 푸터 시작 직전)
+  // 5) </body> 직전 (최후 폴백)
+  const anchors: RegExp[] = [
+    /<!--\s*__BIB_HERE__\s*-->/i,
+    /<\/main>/i,
+    /<\/article>/i,
+    /<footer[\s>][\s\S]*?>/i,
+    /<\/body>/i,
+  ];
 
-  if (!tryInsert(/<\/main>\s*<\/body>/i)) {
-    if (!tryInsert(/<\/article>\s*<\/body>/i)) {
-      if (!tryInsert(/<\/body>/i)) {
-        patched = patched + `\n${bibliographyHtml}`;
-      }
+  let patched = html;
+  let inserted = false;
+  for (const re of anchors) {
+    const next = patched.replace(re, `${bibliographyHtml}\n$&`);
+    if (next !== patched) {
+      patched = next;
+      inserted = true;
+      break;
     }
+  }
+  if (!inserted) {
+    patched += `\n${bibliographyHtml}`;
   }
 
   const headers = new Headers(resp.headers);
@@ -62,6 +74,7 @@ export async function withBibliography(resp: Response, bibliographyHtml?: string
   }
   return new Response(patched, { status: resp.status, headers });
 }
+
 
 export type WhereValue = string | number | boolean | null | undefined;
 

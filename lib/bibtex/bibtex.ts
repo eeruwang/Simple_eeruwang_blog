@@ -486,25 +486,20 @@ function pickFormatter(style = "harvard"): (e: BibEntry) => string {
   return fmtEntryHarvard;
 }
 
-function generateBibliographyHtml(
-  entries: BibEntry[],
-  style = "harvard",
-  _opts: { usageHelp?: boolean } = {}
-): string {
+function generateBibliographyHtml(entries: BibEntry[], style = "harvard"): string {
   if (!entries.length) return "";
   const fmt = pickFormatter(style);
-  const items = entries
-    .map((e) => `<li id="ref-${esc(e.citationKey)}">${fmt(e)}</li>`)
-    .join("\n");
+  const items = entries.map(e => `<li id="ref-${esc(e.citationKey)}">${fmt(e)}</li>`).join("\n");
 
   return `
-<section class="bibliography" aria-labelledby="bib-h">
+<section class="bibliography footnotes" role="doc-bibliography" aria-label="Bibliography">
   <h2 id="bib-h">Bibliography</h2>
-  <ol class="bib-list">
+  <ul class="bib-list">
     ${items}
-  </ol>
+  </ul>
 </section>`;
 }
+
 
 
 /* ─────────────────────────────────────────────────────────────
