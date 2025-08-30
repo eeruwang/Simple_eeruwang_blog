@@ -262,7 +262,7 @@ export const EDITOR_CLIENT_JS: string = `
     const payload = {
       title: ($("#title").value || "").trim() || "(untitled)",
       body_md: mde.value(),
-      slug: ($("#slug").value || "").trim() || slugify($("#title").value),
+      slug: ($("#slug").value || "").trim().toLowerCase() || slugify($("#title").value),
       tags: tagsArr(),
       excerpt: ($("#excerpt")?.value || "").trim(),
       is_page: !!($isPage && $isPage.checked),

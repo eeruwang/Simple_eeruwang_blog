@@ -196,7 +196,7 @@ export async function listByTag(tag: string, page = 1, perPage = 10): Promise<Po
 /** 슬러그로 조회(포스트/페이지 공용) */
 export async function getBySlug(slug: string): Promise<PostRow | null> {
   const rows = await query<PostRow>(
-    `select * from posts where slug = $1 limit 1`,
+    `select * from posts where lower(slug) = lower($1) limit 1`,
     [slug]
   );
   return rows[0] || null;
@@ -212,7 +212,7 @@ export async function getPageBySlug(
     `
     select *
     from posts
-    where slug = $1
+    where lower(slug) = lower($1)
       and coalesce(is_page, false) = true
       and (published = true or $2::boolean = true)
     order by published_at desc nulls last, updated_at desc nulls last, id desc
@@ -233,7 +233,7 @@ export async function getPostBySlug(
     `
     select *
     from posts
-    where slug = $1
+    where lower(slug) = lower($1)
       and coalesce(is_page, false) = false
       and (published = true or $2::boolean = true)
     order by published_at desc nulls last, updated_at desc nulls last, id desc
