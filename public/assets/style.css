@@ -478,9 +478,23 @@ body.side-open .side-backdrop{
 .editor-page .pad-12{padding:12px}
 
 /* 에디터 본문 */
-.editor-page #md{ display:block; min-height:320px !important; visibility:visible !important; }
+/* ===== Editor source <textarea> 숨기기 (FOUC 방지) =====
+   - EasyMDE/CodeMirror가 붙기 전 잠깐 보이는 원본 <textarea id="md">를 완전히 숨깁니다.
+   - JS가 비활성화된 환경에서도 쓰려면 html에 .js 클래스를 사용해 조건부로 숨기는 방식을 권장(아래 2번 참고).
+*/
+.editor-page #md{
+  position:absolute !important;
+  left:-9999px !important;
+  width:1px !important;
+  height:1px !important;
+  overflow:hidden !important;
+  visibility:hidden !important;
+}
+
+/* 실제 편집기는 CodeMirror 컨테이너가 담당 */
 .editor-page .EasyMDEContainer{ display:block !important; }
 .editor-page .CodeMirror{ min-height:300px !important; }
+
 
 /* ===== Editor list (virtual rows) =====
    - 기본 행 스타일

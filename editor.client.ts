@@ -77,19 +77,31 @@ export const EDITOR_CLIENT_JS: string = `
     return normalizeSlug(String(s||""));
   }
 
+  // 기존 updatePermalink()를 아래로 교체
   function updatePermalink(){
     if (!$permalink) return;
+
     const raw  = ($("#slug").value || "").trim();
     const base = raw || $("#title").value || "";
-    const slug = slugify(base);
+    const slug = slugify(base);                       // 한글 보존 정규화
     const enc  = encodeURIComponent(slug);
     const isPage = !!($isPage && $isPage.checked);
-    const path = isPage ? ("/" + enc) : ("/post/" + enc);
-    $permalink.textContent = "Permalink: " + path;
-    if (typeof $permalink.setAttribute === "function") {
-      try { $permalink.setAttribute("href", path); } catch {}
+
+    // 보기용(사람이 읽는 텍스트) vs. 실제 이동용(href)
+    const pathPretty = isPage ? ("/" + slug) : ("/post/" + slug);  // 한글 그대로
+    const pathHref   = isPage ? ("/" + enc ) : ("/post/" + enc );  // 인코딩
+
+    // 텍스트는 한글 그대로
+    $permalink.textContent = "Permalink: " + pathPretty;
+
+    // a 태그라면 href도 세팅
+    if ("setAttribute" in $permalink) {
+      try { $permalink.setAttribute("href", pathHref); } catch {}
+      // (옵션) 디버깅/복사용으로 인코딩 값을 data-attr에 보관
+      try { $permalink.setAttribute("data-href-encoded", pathHref); } catch {}
     }
   }
+
 
   function pickDateField(f) {
     return f.published_at || f.Published_at || f.UpdatedAt || f.CreatedAt || "";
