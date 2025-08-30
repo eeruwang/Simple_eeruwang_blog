@@ -392,9 +392,23 @@ body.editor-page.authed #lock{display:none}
 .toc-panel a{display:block;padding:2px 0;text-decoration:none}
 .toc-panel a:is(:hover,.is-active){color:#111;font-weight:600}
 
-.editor-split{display:grid;grid-template-columns:1fr 0;gap:0}
-.editor-split.show-preview{grid-template-columns:1fr 1fr}
+.editor-split{display:grid;grid-template-columns:1fr 0;gap:0;align-items: start;}
+.editor-split.show-preview{grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);column-gap: 24px; /* 원하면 간격 조절 */}
 .preview-pane{border-left:1px solid #eee}
+
+
+/* 프리뷰 패널 숨김/표시 보장 */
+#previewPane[hidden] { display: none !important; }
+.editor-split .preview-pane { display: none; }
+.editor-split.show-preview .preview-pane { display: block; }
+
+/* 프리뷰 경계선이 남아 보이지 않도록 */
+#previewPane { border-left: 1px solid var(--line, #eee); }
+#previewPane[hidden] { border-left: 0; }
+
+/* 액션 버튼들이 줄바꿈으로 세로로 떨어지지 않게 */
+.row-actions { display:flex; gap:8px; flex-wrap:nowrap; }
+
 
 /* Scoped helpers */
 .editor-page .hidden{display:none}
