@@ -253,6 +253,7 @@ export async function initEditor() {
     }
   }
 
+  // public/assets/editor.js 안의 renderList() 를 아래로 교체
   function renderList() {
     if (!el.list) return;
     const q = (el.search?.value || "").toLowerCase();
@@ -271,24 +272,37 @@ export async function initEditor() {
     el.list.innerHTML = filtered.map((r) => {
       const dateStr = formatDateTime(r.published_at || r.updated_at || r.created_at);
       const status = r.published ? "published" : "draft";
-      const badgeStyle = r.published ? "background:#e6f4ea;color:#0f5132" : "background:#fdecef;color:#842029";
-      const tagsArr = Array.isArray(r.tags) ? r.tags : (r.tags ? String(r.tags).split(",").map(s=>s.trim()).filter(Boolean) : []);
-      const tagsHtml = tagsArr.map(t => `<span class="tag" style="font-size:11px;padding:2px 6px;border-radius:6px;background:#f1f5f9">${escapeHtml(t)}</span>`).join("");
+      const badgeStyle = r.published
+        ? "background:#e6f4ea;color:#0f5132"
+        : "background:#fdecef;color:#842029";
+      const tagsArr = Array.isArray(r.tags)
+        ? r.tags
+        : (r.tags ? String(r.tags).split(",").map(s=>s.trim()).filter(Boolean) : []);
+      const tagsHtml = tagsArr
+        .map(t => `<span class="tag" style="font-size:11px;padding:2px 6px;border-radius:6px;background:#f1f5f9">${escapeHtml(t)}</span>`)
+        .join("");
 
       return `
-        <div class="virtual-row" role="option" data-id="${r.id}" aria-selected="false" tabindex="0">
-          <div class="row" style="display:flex;gap:10px;align-items:center">
-            <strong style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(r.title || "(untitled)")}</strong>
-            <span style="font-size:12px;opacity:.7">${escapeHtml(r.slug || "")}</span>
-            <div class="meta" style="margin-left:auto;display:flex;gap:8px;align-items:center;font-size:12px;">
-              <span class="badge" style="padding:2px 8px;border-radius:999px;${badgeStyle}">${status}</span>
-              <span>${escapeHtml(dateStr)}</span>
-            </div>
+        <div class="virtual-row" role="option" data-id="${r.id}" aria-selected="false" tabindex="0" style="padding:8px 10px;border-bottom:1px solid #eef2f7;">
+          <!-- 제목: 전용 줄, 줄바꿈 허용(안 잘리게) -->
+          <div class="title-line" style="font-weight:600;line-height:1.35;margin:0 0 4px 0;white-space:normal;word-break:break-word;">
+            ${escapeHtml(r.title || "(untitled)")}
           </div>
-          ${tagsArr.length ? `<div class="tags" style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${tagsHtml}</div>` : ""}
-        </div>`;
+
+          <!-- 메타: 다음 줄 -->
+          <div class="meta-line" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;opacity:.85;">
+            <span class="badge" style="padding:2px 8px;border-radius:999px;${badgeStyle}">${status}</span>
+            ${r.slug ? `<span class="slug" style="opacity:.8">/${escapeHtml(r.is_page ? r.slug : "post/"+r.slug)}</span>` : ""}
+            <span class="date" style="opacity:.7">${escapeHtml(dateStr)}</span>
+          </div>
+
+          <!-- 태그: 있으면 그 아래 줄 -->
+          ${tagsArr.length ? `<div class="tags-line" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${tagsHtml}</div>` : ""}
+        </div>
+      `;
     }).join("");
 
+    // 바인딩 동일
     el.list.querySelectorAll(".virtual-row").forEach((row) => {
       row.addEventListener("click", async () => {
         const id = Number(row.getAttribute("data-id") || "0");
@@ -296,9 +310,12 @@ export async function initEditor() {
         try { const j = await apiGet("/api/posts/" + id); useRecord(asItem(j)); }
         catch (e) { console.error(e); setHint("항목 로드 실패"); }
       });
-      row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); } });
+      row.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); row.click(); }
+      });
     });
   }
+
 
   /* ───────────────── EasyMDE 커서에 Markdown 삽입 ───────────────── */
   function insertMarkdownAtCursor(mdText) {

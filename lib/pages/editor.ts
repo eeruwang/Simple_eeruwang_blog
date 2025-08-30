@@ -43,7 +43,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <!-- 툴바(필터/프리뷰/Published 토글) -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
-    <button id="sideToggle" class="only-mobile" type="button" aria-controls="postVirtualList" aria-expanded="false">☰ 목록</button>
+    <button id="sideToggle" type="button" aria-controls="postVirtualList" aria-expanded="true">☰ 목록</button>
     <select id="filterSelect" aria-label="filter">
       <option value="all">all</option>
       <option value="published">published</option>
@@ -216,22 +216,46 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
   <!-- 모바일 사이드바 토글 -->
   <script type="module">
-    (function(){
-      const side=document.querySelector('.editor-side');
-      const btn=document.getElementById('sideToggle');
-      const bd=document.getElementById('sideBackdrop');
-      if (!side||!btn||!bd) return;
-      const mq=window.matchMedia('(max-width: 900px)'); const isM=()=>mq.matches;
-      function open(){ document.body.classList.add('side-open'); btn.setAttribute('aria-expanded','true'); if(isM()) document.body.classList.add('no-scroll'); }
-      function close(){ document.body.classList.remove('side-open','no-scroll'); btn.setAttribute('aria-expanded','false'); }
-      btn.addEventListener('click',(e)=>{ e.preventDefault(); document.body.classList.contains('side-open')?close():open(); });
-      bd.addEventListener('click', close);
-      document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close(); });
-      side.addEventListener('click',(e)=>{ const t=e.target; const row=t && t.closest ? t.closest('.virtual-row') : null; if(row && isM()) setTimeout(close,0); });
-      mq.addEventListener?.('change',()=>{ if(!isM()) close(); });
-      window.addEventListener('resize',()=>{ if(!isM()) close(); });
-    })();
-  </script>
+  (function(){
+    const side   = document.querySelector('.editor-side');
+    const btn    = document.getElementById('sideToggle');
+    const bd     = document.getElementById('sideBackdrop');
+    const mq     = window.matchMedia('(max-width: 900px)');
+    const isM    = () => mq.matches;
+
+    function setMobileOpen(on){
+      document.body.classList.toggle('side-open', on);
+      btn?.setAttribute('aria-expanded', on ? 'true' : 'false');
+      if (on && isM()) document.body.classList.add('no-scroll');
+      else document.body.classList.remove('no-scroll');
+    }
+
+    function setCollapsed(collapsed){
+      // 데스크탑: 목록 접기/펼치기
+      document.body.classList.toggle('side-collapsed', collapsed);
+      // 접혀 있으면 '목록 패널이 닫혀있다' → expanded=false
+      btn?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+
+    function handleClick(){
+      if (isM()) {
+        const on = !document.body.classList.contains('side-open');
+        setMobileOpen(on);
+      } else {
+        const collapsed = !document.body.classList.contains('side-collapsed');
+        setCollapsed(collapsed);
+      }
+    }
+
+    btn?.addEventListener('click', (e)=>{ e.preventDefault(); handleClick(); });
+    bd?.addEventListener('click', ()=> setMobileOpen(false));
+    document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') setMobileOpen(false); });
+    mq.addEventListener?.('change', ()=>{
+      // 모바일 → 데스크탑 전환 시 모바일 오버레이 상태 정리
+      if (!isM()) setMobileOpen(false);
+    });
+  })();
+</script>
 </body>
 </html>`;
 }

@@ -231,6 +231,23 @@ body.side-open .side-panel { transform: translateX(0); }
 #sideBackdrop { display: none; }
 body.side-open #sideBackdrop { display: block; }
 
+/* ───── 데스크탑에서 목록 접힘 상태 ───── */
+body.side-collapsed .editor-layout {
+  /* 목록 열 제거 → 본문 단일 컬럼 */
+  grid-template-columns: 1fr;
+}
+
+body.side-collapsed .editor-side {
+  display: none;
+}
+
+body.side-collapsed .editor-main {
+  grid-column: 1 / -1; /* 전체 그리드 차지 */
+}
+
+/* 참고: 이미 모바일 오버레이(side-open)는 기존 규칙 유지 */
+
+
 /* 헤더 & 툴바 정렬 */
 body.editor-page header,
 body.editor-page .editor-toolbar-sticky{
