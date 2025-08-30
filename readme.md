@@ -7,7 +7,8 @@
 > - 이 프로젝트는 **개인용**으로 작성되었습니다. 문서나 코드에 **누락/오류가 있을 수** 있으며, 배포·운영에 따른 책임은 사용자에게 있습니다.
 > - **Docker/Compose 배포는 개발 예정**입니다. 본 문서에서는 의도적으로 상세 내용을 생략합니다.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYOUR_ORG%2FYOUR_REPO&integration-ids=NEON_INTEGRATION_ID)
+## Vercel Install
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Feeruwang%2FSimple_eeruwang_blog&integration-ids=NEON_INTEGRATION_ID)
 
 
 ---
