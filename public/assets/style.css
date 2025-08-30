@@ -12,8 +12,7 @@
   --shadow:0 6px 18px rgba(0,0,0,.06);
   --page-max:760px;
   --side-w:280px;
-  --handle-w:6px;
-  --shell-max: calc(var(--page-max) + var(--side-w) + var(--handle-w));
+  --shell-max: calc(var(--page-max) + var(--side-w));
   --tag-accent: #111;
 
   /* 배너 사이즈 */
@@ -356,7 +355,7 @@ body.editor-page.authed #lock{display:none}
 /* Layout */
 .editor-layout{
   display:grid;
-  grid-template-columns: var(--side-w) var(--handle-w) minmax(0,1fr);
+  grid-template-columns: var(--side-w) minmax(0,1fr); /* 2열만 */
   gap:0;
   min-height:calc(100dvh - 58px);
   max-width: var(--shell-max);
