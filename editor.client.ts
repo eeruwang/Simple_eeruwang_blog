@@ -666,12 +666,21 @@ export const EDITOR_CLIENT_JS: string = `
   }
   const renderPreviewDeb = debounce(renderPreview, 250);
 
-  $previewToggleBtn?.addEventListener('click', ()=>{
+  // ✅ 이벤트 위임: 언제 로드되어도 동작
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as Element | null)?.closest?.('#previewToggleBtn');
+    if (!btn) return;
+
     const split = document.querySelector('.editor-split') as HTMLElement | null;
+    const pane  = document.getElementById('previewPane') as HTMLElement | null;
+
     const on = !!split?.classList.toggle('show-preview');
-    if ($previewPane) $previewPane.hidden = !on;   // on일 때 hidden 제거
+    if (pane) pane.hidden = !on;
+
+    (btn as HTMLElement).setAttribute('aria-pressed', on ? 'true' : 'false');
     if (on) renderPreview();
   });
+
 
   // 읽기 시간/문자 수
   function readingStatFrom(text){

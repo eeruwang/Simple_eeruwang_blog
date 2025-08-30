@@ -393,24 +393,39 @@ body.editor-page.authed #lock{display:none}
 
 /* 에디터/프리뷰 폭을 본문 폭에 맞춤 */
 .editor{ max-width:var(--page-max); width:100%; margin:0 auto; }
-/* 교체본: 보이는 높이 보장(반반 레이아웃에서도 즉시 표시) */
-.preview-pane { 
+/* ===== Preview panel sizing (보이는 높이 보장) ===== */
+.preview-pane{
   border-left:1px solid #eee;
-  min-height:60vh;           /* 부모 자체 높이 */
+  min-height:60vh;                 /* 부모 자체에 높이 부여 */
 }
 .preview-pane > iframe{
   display:block;
   width:100%;
-  max-width:var(--page-max);
   margin:0 auto;
-  height:60vh;               /* iframe 고정 높이 */
+  height:60vh;                     /* iframe도 확실한 높이 */
   min-height:320px;
   border:0;
 }
+
+/* 반반 모드에서 양쪽이 정말 1:1로 차도록, 내부 max-width 해제 */
+.editor-split.show-preview .editor{
+  max-width:none;                  /* ← 기존 .editor { max-width: var(--page-max) } 무력화 */
+  margin:0;
+}
+.editor-split.show-preview .preview-pane > iframe{
+  max-width:none;                  /* ← iframe의 max-width도 해제해 진짜 반반 */
+}
+
+/* 숨김/표시 규칙 유지 */
+#previewPane[hidden]{ display:none !important; }
+.editor-split .preview-pane{ display:none; }
+.editor-split.show-preview .preview-pane{ display:block; }
+
 @media (max-width:900px){
   .preview-pane{ min-height:50vh; }
   .preview-pane > iframe{ height:50vh; }
 }
+
 
 /* Layout */
 .editor-layout{
