@@ -383,7 +383,8 @@ body.editor-page.authed #lock{display:none}
 .virtual-row.active{outline:2px solid rgba(0,120,255,.25)}
 
 /* Main */
-.editor-main{ display:grid; grid-template-columns:minmax(0,1fr) 240px; gap:16px; padding:16px 0; }
+.editor-main { display:grid; grid-template-columns: minmax(0,1fr); gap:16px; padding:16px 0; }
+.editor-extras { display:none; }
 .editor-main:has(> .editor-extras > .toc-panel:empty){ grid-template-columns:1fr; }
 .editor-extras:has(> .toc-panel:empty){ display:none; }
 .editor-extras{display:flex;flex-direction:column;gap:12px}
@@ -391,8 +392,13 @@ body.editor-page.authed #lock{display:none}
 .toc-panel a{display:block;padding:2px 0;text-decoration:none}
 .toc-panel a:is(:hover,.is-active){color:#111;font-weight:600}
 
-.editor-split{display:grid;grid-template-columns:1fr 0;gap:0;align-items: start;}
-.editor-split.show-preview{grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);column-gap: 24px; /* 원하면 간격 조절 */}
+/* TOC가 있을 때만 2열 */
+.editor-main.toc-visible { grid-template-columns: minmax(0,1fr) 240px; }
+.editor-main.toc-visible .editor-extras { display:flex; }
+
+.editor-split{ display:grid; grid-template-columns:minmax(0,1fr); gap:0; align-items:start; }
+.editor-split.show-preview{ grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:24px; }
+
 .preview-pane{border-left:1px solid #eee}
 
 
@@ -403,7 +409,7 @@ body.editor-page.authed #lock{display:none}
 
 /* 프리뷰 경계선이 남아 보이지 않도록 */
 #previewPane { border-left: 1px solid var(--line, #eee); }
-#previewPane[hidden] { border-left: 0; }
+#previewPane[hidden]{ display:none !important; }
 
 /* 액션 버튼들이 줄바꿈으로 세로로 떨어지지 않게 */
 .row-actions { display:flex; gap:8px; flex-wrap:nowrap; }
