@@ -38,6 +38,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
   <header class="editor-header">
     <button class="auth-only" id="new">New</button>
     <button class="auth-only" id="bibtexBtn" title="Upload reference.bib">BIBTEX</button>
+    <input id="bibtexFile" type="file" multiple accept=".bib,text/plain" class="hidden" />
     <!-- ↓ display:none 쓰지 않기 -->
     <span id="hint" class="muted" aria-live="polite"></span>
     <a href="/" class="link-back" data-back>← 목록</a>
