@@ -524,7 +524,7 @@ export async function processBib(markdown: string, bibUrl: string, opts: Process
   const usedEntries = usedKeys
     .map((k) => map.get(k) || map.get(String(k).toLowerCase()))
     .filter((v): v is BibEntry => !!v);
-  const bibliographyHtml = generateBibliographyHtml(usedEntries, style, { usageHelp });
+  const bibliographyHtml = generateBibliographyHtml(usedEntries, style);
 
   const allKeys = parsed.map(e => e.citationKey);
   return { content: withCites, bibliographyHtml, usedKeys, allKeys };
