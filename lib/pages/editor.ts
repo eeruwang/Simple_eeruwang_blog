@@ -1,7 +1,10 @@
 // lib/pages/editor.ts
+// 에디터 HTML 페이지 렌더러 (로그인 후 동적 import 로 부팅)
+
 export type EditorPageOptions = { version?: string };
 
-export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
+export function renderEditorHTML(opts: EditorPageOptions = {}): string {
+  const ver = opts.version || "v8";
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -15,31 +18,13 @@ export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
 <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
 
 <link rel="stylesheet" href="/assets/style.css">
-<style>
-  /* 로그인 전 버튼/툴바 숨김 */
-  .auth-only { display: none; }
-  body.authed .auth-only { display: inline-flex !important; }
-
-  /* 레이아웃 보장 */
-  .editor-layout { display: grid !important; grid-template-columns: 280px 1fr 260px; gap: 12px; }
-  @media (max-width: 900px) { .editor-layout { grid-template-columns: 1fr; } }
-
-  /* 로그인 오버레이 */
-  #lock{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:1000}
-  #lock .panel{background:#fff;padding:16px 18px;border-radius:10px;min-width:280px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
-  #lock .row{display:flex;gap:8px}
-  #lock .hint{margin-top:8px;font-size:12px;opacity:.8}
-
-  /* 폴백: 에디터 초기화 실패해도 textarea는 보이게 */
-  #md{display:block; min-height:320px}
-</style>
 </head>
 <body class="editor-page">
   <!-- 로그인 오버레이 -->
-  <div id="lock" style="display:none">
+  <div id="lock">
     <div class="panel">
       <h2>Editor 로그인</h2>
-      <div class="row">
+      <div class="row row-wrap">
         <input id="key" type="password" placeholder="Editor password" />
         <button id="signin">Sign in</button>
       </div>
@@ -48,15 +33,15 @@ export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
   </div>
 
   <!-- 상단 헤더 (로그인 후 보임) -->
-  <header>
+  <header class="editor-header">
     <button class="auth-only" id="new">New</button>
     <button class="auth-only" id="save">Save Draft</button>
     <button class="auth-only" id="publish">Publish</button>
     <button class="auth-only" id="delete">Delete</button>
     <button class="auth-only" id="attachBtn">이미지</button>
-    <input id="attach" type="file" multiple accept="image/*" style="display:none" />
-    <span id="hint" style="opacity:.8;font-size:13px;margin-left:8px"></span>
-    <a href="/" style="margin-left:auto;opacity:.8" data-back>← 목록</a>
+    <input id="attach" type="file" multiple accept="image/*" class="hidden" />
+    <span id="hint" class="muted"></span>
+    <a href="/" class="link-back" data-back>← 목록</a>
   </header>
 
   <!-- 툴바 (로그인 후 보임) -->
@@ -69,9 +54,9 @@ export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
       <option value="page">page</option>
       <option value="post">post</option>
     </select>
-    <span class="spacer" style="flex:1"></span>
+    <span class="spacer"></span>
     <button id="previewToggleBtn" type="button" aria-pressed="false" title="미리보기 토글">Preview</button>
-    <label style="display:inline-flex;align-items:center;gap:6px">
+    <label class="check-inline">
       <input id="publishedToggle" type="checkbox"><span>published</span>
     </label>
   </div>
@@ -91,31 +76,31 @@ export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
 
       <div class="editor-main">
         <section class="editor-split">
-          <main class="editor" style="padding:12px">
-            <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+          <main class="editor pad-12">
+            <div class="row row-wrap">
+              <label class="check-inline">
                 <input id="is_page" type="checkbox"><span>page</span>
               </label>
-              <span id="permalink" style="font-size:12px;opacity:.75;white-space:nowrap">Permalink: /post/</span>
-              <span id="status" style="opacity:.8;font-size:13px;margin-left:auto">draft</span>
+              <span id="permalink" class="muted small nowrap">Permalink: /post/</span>
+              <span id="status" class="muted small ml-auto">draft</span>
             </div>
 
-            <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap">
+            <div class="row row-wrap">
               <input id="title" type="text" placeholder="Title" />
-              <input id="slug" type="text" placeholder="Slug(자동)" />
-              <input id="tags" type="text" placeholder="쉼표로 여러 태그 입력 (예: diary, reading, test)" />
+              <input id="slug"  type="text" placeholder="Slug(자동)" />
+              <input id="tags"  type="text" placeholder="쉼표로 여러 태그 입력 (예: diary, reading, test)" />
             </div>
 
             <div class="row">
               <input id="excerpt" type="text" placeholder="Excerpt (목록에 보일 요약 — 비워두면 본문에서 자동 발췌)" />
             </div>
 
-            <div class="row" style="gap:10px">
-              <label style="font-size:12px;opacity:.8">Publish date</label>
+            <div class="row row-gap">
+              <label class="small muted">Publish date</label>
               <input id="pubdate" type="date" />
-              <label style="font-size:12px;opacity:.8">time</label>
+              <label class="small muted">time</label>
               <input id="pubtime" type="time" />
-              <span style="font-size:12px;opacity:.6">(Publish 때만 적용)</span>
+              <span class="small faint">(Publish 때만 적용)</span>
             </div>
 
             <textarea id="md"></textarea>
@@ -161,7 +146,6 @@ export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
       if (__booted) return; __booted = true;
       const hint = $("#hint");
       try {
-        // 캐시 무시
         const mod = await import("/assets/editor.js?ts=" + Date.now());
         const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor);
         if (typeof init === "function") {
@@ -181,8 +165,8 @@ export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
     async function requireAuth(){
       const lock = $("#lock");
       const input = $("#key");
-      const btn = $("#signin");
-      const hint = $("#lock-hint");
+      const btn   = $("#signin");
+      const hint  = $("#lock-hint");
 
       // 자동 시도
       const existing = getToken();
@@ -288,7 +272,6 @@ export function renderEditorHTML(_opts: EditorPageOptions = {}): string {
       });
     });
   </script>
-
 </body>
 </html>`;
 }

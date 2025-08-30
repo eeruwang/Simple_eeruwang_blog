@@ -469,6 +469,81 @@ body.editor-page[data-auth="1"] #lock{display:none}
   display:none; pointer-events:none;
 }
 
+/* ===========================
+   Editor page styles (scoped)
+   =========================== */
+.editor-page .hidden { display: none; }
+.editor-page .muted { opacity: .8; }
+.editor-page .faint { opacity: .6; }
+.editor-page .small { font-size: 12px; }
+.editor-page .nowrap { white-space: nowrap; }
+.editor-page .ml-auto { margin-left: auto; }
+.editor-page .spacer { flex: 1; }
+.editor-page .pad-12 { padding: 12px; }
+.editor-page .row { display: flex; align-items: center; gap: 10px; }
+.editor-page .row-wrap { flex-wrap: wrap; }
+.editor-page .row-gap { gap: 10px; }
+
+/* 로그인 상태에서 버튼/툴바 보이도록 */
+.editor-page .auth-only { display: none; }
+.editor-page.authed .auth-only { display: inline-flex !important; }
+
+/* 상단 헤더 */
+.editor-page .editor-header { position: static; height: auto; display: flex; gap: 8px; align-items: center; }
+.editor-page .editor-header .link-back { margin-left: auto; opacity: .8; }
+
+/* 레이아웃 */
+.editor-page .wrap { display: block; }
+.editor-page .editor-layout {
+  display: grid !important;
+  grid-template-columns: 280px 1fr 260px;
+  gap: 12px;
+  align-items: start;
+  min-height: 70vh;
+}
+@media (max-width: 900px) {
+  .editor-page .editor-layout { grid-template-columns: 1fr; }
+}
+
+/* 사이드/메인/프리뷰 */
+.editor-page .editor-side  { display: block !important; min-height: 60vh; overflow: auto; }
+.editor-page .editor-main  { display: block !important; min-height: 60vh; }
+.editor-page .preview-pane { display: block !important; }
+.editor-page #postVirtualList { min-height: 200px; }
+
+/* 목록(좌측) */
+.editor-page .virtual-list { display: grid; gap: 6px; }
+.editor-page .virtual-row {
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.editor-page .virtual-row.active { outline: 2px solid rgba(0,120,255,.25); }
+
+/* 체크/라벨 인라인 */
+.editor-page .check-inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+/* 에디터 본문 */
+.editor-page #md { display: block !important; min-height: 320px !important; visibility: visible !important; }
+.editor-page .EasyMDEContainer { display: block !important; }
+.editor-page .CodeMirror { min-height: 300px !important; }
+
+/* 프리뷰 에러 */
+.editor-page .preview-error { color: #c00; padding: 12px; }
+
+/* 로그인 오버레이 */
+.editor-page #lock { display: none; position: fixed; inset: 0; align-items: center; justify-content: center; background: rgba(0,0,0,.35); z-index: 1000; }
+.editor-page #lock .panel { background:#fff; padding:16px 18px; border-radius:10px; min-width:280px;
+  box-shadow:0 8px 30px rgba(0,0,0,.25); }
+.editor-page #lock .row { display:flex; gap:8px; }
+.editor-page #lock .hint { margin-top:8px; font-size:12px; opacity:.8; }
+
+.preview-error { color:#c00; background:#fff4f4; padding:8px 12px; border-radius:6px; }
+
+
+
 /* 모바일 */
 @media (max-width:900px){
   .editor-layout{ grid-template-columns:1fr; }

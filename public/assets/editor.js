@@ -290,6 +290,23 @@ export async function initEditor() {
     await actionNew();
   }
 
+  async function updatePreview() {
+    if (!el.previewFrame) return;
+    const md = mde ? mde.value() : "";
+    try {
+      const j = await apiSend("/api/posts/preview", "POST", { md });
+      const html = (j && j.html) ? j.html : "<p>(preview failed)</p>";
+      el.previewFrame.srcdoc = `
+        <!doctype html><meta charset="utf-8">
+        <link rel="stylesheet" href="/assets/style.css">
+        <article class="post">${html}</article>`;
+    } catch (e) {
+      el.previewFrame.srcdoc =
+        `<div class="preview-error">미리보기 실패: ${escapeHtml(e.message || String(e))}</div>`;
+    }
+  }
+
+
   function togglePreview() {
     if (!el.previewPane || !el.previewBtn) return;
     const on = el.previewPane.hasAttribute("hidden");
@@ -297,17 +314,7 @@ export async function initEditor() {
       el.previewPane.removeAttribute("hidden");
       el.previewBtn.setAttribute("aria-pressed", "true");
       // 서버 렌더 프리뷰
-      const md = mde ? mde.value() : "";
-      fetch("/api/posts/preview", {
-        method: "POST",
-        headers: authHeaders({ "content-type": "application/json" }),
-        body: JSON.stringify({ md })
-      }).then(r => r.json().catch(()=>({}))).then(j => {
-        const html = (j && j.html) ? j.html : "<p>(preview failed)</p>";
-        el.previewFrame.srcdoc = '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/assets/style.css"><article class="post">' + html + "</article>";
-      }).catch(e => {
-        el.previewFrame.srcdoc = '<p style="color:#c00">미리보기 실패: ' + escapeHtml(e.message || String(e)) + "</p>";
-      });
+      updatePreview();
     } else {
       el.previewPane.setAttribute("hidden", "");
       el.previewBtn.setAttribute("aria-pressed", "false");
