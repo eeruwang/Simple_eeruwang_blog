@@ -262,8 +262,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 1) 에디터 키 체크
     if (path === "/api/check-key" && req.method === "GET") {
-      const tok = getEditorTokenFromHeaders(req);
+      const tok = getEditorToken(req, url);
       const ok = !!tok && tok === env.EDITOR_PASSWORD;
+      applyEditorCors(req, res, env);
       harden(res, req);
       return res.status(ok ? 200 : 401).json({ ok });
     }
