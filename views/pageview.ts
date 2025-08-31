@@ -208,17 +208,7 @@ export async function renderPostPage(
   <div id="content" class="content" style="margin-top:8px">${contentHtml}</div>
 </article>
 
-${bannersHtml}
-
-<script>
-  (function () {
-    var a = document.querySelector('[data-back]');
-    if (!a) return;
-    a.addEventListener('click', function (e) {
-      if (history.length > 1) { e.preventDefault(); history.back(); }
-    }, { passive: false });
-  })();
-</script>`;
+${bannersHtml}`;
 
   return new Response(pageHtml({ title, body, headExtra }, env as any), {
     headers: { "content-type": "text/html; charset=utf-8" },

@@ -226,6 +226,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+
     // 0) 헬스체크 (공개)
     if (path === "/api/diag-db" && req.method === "GET") {
       try {
@@ -239,6 +240,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(500).json({ ok: false, error: String(e?.message || e) });
       }
     }
+
+    // 레거시 공개 경로 → 현행 공개 경로로 영구 이동
+    if (path === "/routes/public/editor/auth.js" && req.method === "GET") {
+      res.status(308);
+      res.setHeader("Location", "/assets/editor/auth.js");
+      harden(res, req);
+      return res.end();
+    }
+
 
     // ── Admin: DB 부트스트랩 (posts 테이블/트리거 생성)
     if (path === "/api/admin/bootstrap" && (req.method === "POST" || req.method === "GET")) {
