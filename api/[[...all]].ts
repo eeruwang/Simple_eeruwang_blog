@@ -289,7 +289,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
       // A) 비공개 에디터 자산 서빙 (인증 필요)
-    if (path.startsWith("/editor/asset/") && req.method === "GET") {
+    if ((path.startsWith("/editor/asset/") || path.startsWith("/lib/pages/editor/")) && req.method === "GET") {
       const tok = getEditorToken(req, url); // 헤더 or ?token or 쿠키
       const ok = !!tok && tok === (env.EDITOR_PASSWORD || "").trim();
       if (!ok) {
@@ -297,7 +297,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).send("Unauthorized");
       }
       try {
-        const rel  = path.slice("/editor/asset/".length);
+        const rel  = path.startsWith("/editor/asset/")
+          ? path.slice("/editor/asset/".length)
+          : path.slice("/lib/pages/editor/".length);    // ← 구형 절대경로도 허용
         const base = npath.join(process.cwd(), "lib", "pages", "editor");
         const file = safeJoin(base, rel);
         const buf  = await fs.readFile(file);
