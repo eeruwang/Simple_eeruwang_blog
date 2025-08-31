@@ -12,6 +12,7 @@
     "start": "NODE_ENV=production node dist/server/server.js",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down --remove-orphans",
+    "sec:audit": "npm audit --omit=dev || true",
     "dev:docker": "npm run docker:up",
     "db:setup": "sh -c 'psql \"$DATABASE_URL\" -f lib/db/schema.sql'"
   },

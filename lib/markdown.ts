@@ -19,7 +19,22 @@ export function mdToHtml(src: string): string {
   return md.render(src || "");
 }
 
+export function enforceSafeExternalLinks(html: string): string {
+  return html.replace(/<a\b([^>]+)>/gi, (m, attrs) => {
+    const hasTargetBlank = /target\s*=\s*"?_blank"?/i.test(attrs);
+    if (!hasTargetBlank) return m;
+    const hasRel = /\brel\s*=\s*"[^"]*"/i.test(attrs);
+    if (hasRel) {
+      return m.replace(/rel\s*=\s*"([^"]*)"/i, (_0, rel) => `rel="${rel} noopener noreferrer"`);
+    }
+    return m.replace(/<a\b/, '<a rel="noopener noreferrer"');
+  });
+}
+
 export function mdToSafeHtml(src: string): string {
   // 마크다운 → HTML 직후에 sanitize
-  return sanitize(mdToHtml(src));
+  const safe = sanitize(mdToHtml(src));
+  // 여기서 새 창 링크 보강
+  return enforceSafeExternalLinks(safe);
 }
+

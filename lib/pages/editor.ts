@@ -15,8 +15,8 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 
 <!-- EasyMDE가 필요로 하는 Font Awesome 4 아이콘 + EasyMDE 자체 -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
-<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css" crossorigin="anonymous">
+<script src="https://unpkg.com/easymde/dist/easymde.min.js" crossorigin="anonymous"></script>
 
 <!-- 사이트 공통 스타일 -->
 <link rel="stylesheet" href="/assets/style.css">
@@ -128,95 +128,7 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
   </div>
 
   <!-- 인증 & 부트스트랩 -->
-  <script type="module">
-    const $ = (s) => document.querySelector(s);
-
-    function setToken(tok){
-      try { localStorage.setItem("editor_token", tok); } catch {}
-      document.cookie = "editor_token=" + encodeURIComponent(tok) + "; Path=/; Max-Age=" + (60*60*24*7) + "; SameSite=Lax; Secure";
-    }
-    function getToken(){
-      try { const t = localStorage.getItem("editor_token"); if (t) return t; } catch {}
-      const m = document.cookie.match(/(?:^|;\\s*)editor_token=([^;]+)/);
-      return m ? decodeURIComponent(m[1]) : "";
-    }
-    async function checkKey(tok){
-      if (!tok) return false;
-      try {
-        const r = await fetch("/api/check-key", { headers: { "x-editor-token": tok }});
-        const j = await r.json().catch(()=>({}));
-        return r.ok && j && j.ok === true;
-      } catch { return false; }
-    }
-
-    // 로그인 성공 → /assets/editor.js 동적 import → initEditor()
-    let __booted = false;
-    async function bootEditor(){
-      if (__booted) return; __booted = true;
-      const hint = $("#hint");
-      try {
-        const mod = await import("/assets/editor.js?ts=" + Date.now());
-        const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor);
-        if (typeof init === "function") {
-          await init();
-          document.body.classList.add("editor-ready");
-          if (hint) hint.textContent = "";
-        } else {
-          if (hint) hint.textContent = "editor.js: init 함수를 찾을 수 없습니다.";
-          console.warn("editor.js init not found. Export initEditor() or default.");
-        }
-      } catch (e) {
-        console.error("Editor boot failed:", e);
-        if (hint) hint.textContent = "에디터 초기화 실패: " + (e && e.message ? e.message : e);
-      }
-    }
-
-    async function requireAuth(){
-      const lock = $("#lock");
-      const input = $("#key");
-      const btn   = $("#signin");
-      const hint  = $("#lock-hint");
-
-      // 자동 시도
-      const existing = getToken();
-      if (await checkKey(existing)) {
-        if (lock) lock.style.display = "none";
-        document.body.classList.add("authed");
-        document.body.dataset.auth = "1";
-        await bootEditor();
-        return;
-      }
-
-      // 수동 로그인
-      if (lock) lock.style.display = "";
-      document.body.classList.remove("authed");
-      delete document.body.dataset.auth;
-
-      async function submit(){
-        const tok = input && input.value ? String(input.value).trim() : "";
-        if (!tok) { if (hint) hint.textContent = "비밀번호를 입력하세요."; return; }
-        if (hint) hint.textContent = "확인 중…";
-        const ok = await checkKey(tok);
-        if (ok){
-          setToken(tok);
-          if (hint) hint.textContent = "";
-          if (lock) lock.style.display = "none";
-          document.body.classList.add("authed");
-          document.body.dataset.auth = "1";
-          await bootEditor();
-        } else {
-          if (hint) hint.textContent = "비밀번호가 올바르지 않습니다.";
-          if (input && input.select) input.select();
-        }
-      }
-
-      if (btn) btn.addEventListener("click", (e)=>{ e.preventDefault(); submit(); });
-      if (input) input.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); submit(); }});
-    }
-
-    window.addEventListener("DOMContentLoaded", requireAuth);
-  </script>
-
+  <script type="module" src="/assets/editor.js" defer></script>
   <!-- 모바일 사이드바 토글 -->
   <script type="module">
   (function(){

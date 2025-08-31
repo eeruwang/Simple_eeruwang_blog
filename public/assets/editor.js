@@ -310,6 +310,26 @@ export async function initEditor() {
     }
   }
 
+  /* ───────────────── bootstrap ───────────────── */
+  (function bootstrap() {
+    // (선택) 토큰을 localStorage에서 읽어 API 헤더에 붙일 때 씀
+    const TOKEN_KEY = "EDITOR_TOKEN";
+    function getToken() {
+      try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; }
+    }
+
+    // 프로젝트에 제공된 initEditor가 있다면 그대로 호출
+    if (typeof window !== "undefined" && typeof window.initEditor === "function") {
+      window.initEditor({ getToken });
+    } else if (typeof initEditor === "function") {
+      initEditor({ getToken });
+    } else {
+      // 인라인에 있던 초기화/이벤트 바인딩 코드를 여기로 옮기면 됨
+      console.log("[editor] init bootstrap");
+    }
+  })();
+
+
   // public/assets/editor.js 안의 renderList() 를 아래로 교체
   function renderList() {
     if (!el.list) return;
