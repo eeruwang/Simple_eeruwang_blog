@@ -1,6 +1,6 @@
 // api/editor/index.ts
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { renderEditorHTML } from "../../lib/pages/editor.js";
+import { renderEditorHTML } from "../lib/pages/editor.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
