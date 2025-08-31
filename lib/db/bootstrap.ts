@@ -1,10 +1,12 @@
 // lib/db/bootstrap.ts
-import { Pool, PoolConfig } from "pg";
+import { Pool } from "pg";
 
-/** 공용 Env 스키마(필요한 키들만) */
 export type Env = {
   DATABASE_URL?: string;
   NEON_DATABASE_URL?: string;
+  EDITOR_PASSWORD?: string;
+  SITE_URL?: string;
+  BLOB_READ_WRITE_TOKEN?: string;
   [k: string]: unknown;
 };
 
@@ -15,55 +17,44 @@ export type DB = {
   tx: <T>(fn: (q: { query: DB["query"] }) => Promise<T>) => Promise<T>;
 };
 
-// ─────────────────────────────────────────────────────────────
-// 내부 싱글톤 풀(모듈당 1개)
-// ─────────────────────────────────────────────────────────────
 let pool: Pool | null = null;
 
-function sslOption(u: string): PoolConfig["ssl"] {
-  const needSSL =
-    /neon\.tech|supabase\.co|amazonaws\.com|herokuapp\.com/i.test(u) ||
-    /sslmode=require/i.test(u);
-  return needSSL ? { rejectUnauthorized: false } : undefined;
+function sslNeeded(u: string): boolean {
+  return /neon\.tech|supabase\.co|amazonaws\.com|herokuapp\.com/i.test(u) || /sslmode=require/i.test(u);
 }
 
-function resolveDbUrl(envOrUrl: Env | string): string {
-  if (typeof envOrUrl === "string") return envOrUrl;
-  return (
-    envOrUrl.DATABASE_URL ||
-    process.env.DATABASE_URL ||
-    envOrUrl.NEON_DATABASE_URL ||
-    (process.env as any).NEON_DATABASE_URL ||
-    ""
-  );
-}
+export function createDb(env: Env): DB {
+  const url =
+    (env.DATABASE_URL as string | undefined) ||
+    (process.env.DATABASE_URL as string | undefined) ||
+    (env.NEON_DATABASE_URL as string | undefined) ||
+    ((process.env as any).NEON_DATABASE_URL as string | undefined) ||
+    "";
 
-/** 커넥션 풀 생성 + 쿼리/트랜잭션 래퍼 제공 */
-export function createDb(envOrUrl: Env | string): DB {
-  const url = resolveDbUrl(envOrUrl);
   if (!url) throw new Error("DATABASE_URL is not set");
+
   if (!pool) {
     pool = new Pool({
       connectionString: url,
       max: 5,
-      ssl: sslOption(url),
+      ssl: sslNeeded(url) ? { rejectUnauthorized: false } : undefined,
     });
   }
 
   const query: DB["query"] = async (sql, params = []) => {
-    const res = await pool!.query(sql, params);
-    return { rows: res.rows };
+    const r = await pool!.query(sql, params);
+    return { rows: r.rows };
   };
 
   const tx: DB["tx"] = async (fn) => {
     const client = await pool!.connect();
     try {
       await client.query("BEGIN");
-      const q = async (sql: string, params: any[] = []) => {
+      const q: DB["query"] = async (sql, params = []) => {
         const r = await client.query(sql, params);
         return { rows: r.rows };
       };
-      const out = await fn({ query: q as any });
+      const out = await fn({ query: q });
       await client.query("COMMIT");
       return out;
     } catch (e) {
@@ -77,7 +68,6 @@ export function createDb(envOrUrl: Env | string): DB {
   return { query, tx };
 }
 
-/** 스키마/트리거 보증(있으면 NOOP) */
 export async function bootstrapDb(db: DB): Promise<void> {
   const ddl = `
   create table if not exists posts (
@@ -114,7 +104,6 @@ export async function bootstrapDb(db: DB): Promise<void> {
   before update on posts
   for each row execute procedure set_updated_and_published_at();
 
-  -- 🔧 설정 저장소
   create table if not exists app_settings(
     k text primary key,
     v text not null,

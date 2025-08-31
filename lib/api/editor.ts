@@ -4,6 +4,10 @@
 import { createDb, bootstrapDb } from "../db/bootstrap.js";
 import type { DB, Env } from "../db/bootstrap.js";
 
+ // ⬇ 레거시 경로 호환(다른 파일이 lib/api/editor.js에서 import해도 동작하도록)
+export { createDb, bootstrapDb } from "../db/bootstrap.js";
+export type { DB, Env } from "../db/bootstrap.js";
+
 import { put, del } from "@vercel/blob";
 import { Buffer } from "node:buffer";
 import { normalizeSlug } from "../../lib/slug.js";
@@ -30,7 +34,8 @@ function isMissingTableError(e: unknown): boolean {
 }
 
 function requireEditor(request: Request, env: Env): boolean {
-  const want = (env.EDITOR_PASSWORD || process.env.EDITOR_PASSWORD || "").trim();
+  const wantRaw = (env?.EDITOR_PASSWORD ?? process.env.EDITOR_PASSWORD) ?? "";
+  const want = String(wantRaw).trim();
   if (!want) return false;
   const got = request.headers.get("x-editor-token")?.trim() || "";
   return got === want;

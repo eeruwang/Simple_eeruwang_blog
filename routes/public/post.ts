@@ -9,7 +9,7 @@ import { renderPostPage } from "../../views/pageview.js";
 import { seoTags } from "../../lib/seo.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 
-import { createDb } from "../../lib/api/editor.js";                      // DB 접근
+import { createDb } from "../../lib/db/bootstrap.js";
 import { resolveBibtexConfig } from "../../lib/bibtex/config.js";       // env→DB 설정 해석
 import { processBib } from "../../lib/bibtex/bibtex.js";                 // 인용 치환 + 참고문헌
 import { withBibliography } from "../../lib/util.js"; 

@@ -16,7 +16,7 @@ import { renderEditorHTML } from "../lib/pages/editor.js";
 import { handleEditorApi } from "../lib/api/editor.js";
 import { handleNewPost } from "../lib/api/newpost.js";
 
-import { createDb, bootstrapDb } from "../lib/db/bootstrap.js"; // ← 여기로 이동!
+import { createDb, bootstrapDb } from "../lib/db/bootstrap.js";
 
 /* Env 타입(간소화) */
 type Env = {
