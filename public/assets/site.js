@@ -18,6 +18,24 @@
     if (e.key === "Escape") close();
   });
 
+  // 뒤로가기 링크 처리 (data-back)
+  (function () {
+    function bindBackLink() {
+      var a = document.querySelector('[data-back]');
+      if (!a) return;
+      a.addEventListener('click', function (e) {
+        if (history.length > 1) { e.preventDefault(); history.back(); }
+      }, { passive: false });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', bindBackLink, { once: true });
+    } else {
+      bindBackLink();
+    }
+  })();
+
+
   // 필요시 전역 노출
   window.SidePanel = { open, close, toggle };
 })();
