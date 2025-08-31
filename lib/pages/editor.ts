@@ -127,58 +127,8 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
     </div>
   </div>
 
-  <!-- 인증 & 부트스트랩 -->
-  <script type="module" src="/assets/editor.js" defer></script>
-  <!-- 모바일 사이드바 토글 -->
-  <script type="module">
-  (function(){
-    const side   = document.querySelector('.editor-side');
-    const btn    = document.getElementById('sideToggle');
-    const bd     = document.getElementById('sideBackdrop');
-    const mq     = window.matchMedia('(max-width: 900px)');
-    const isM    = () => mq.matches;
-
-    function setMobileOpen(on){
-      document.body.classList.toggle('side-open', on);
-      btn?.setAttribute('aria-expanded', on ? 'true' : 'false');
-      if (on && isM()) document.body.classList.add('no-scroll');
-      else document.body.classList.remove('no-scroll');
-    }
-
-    function setCollapsed(collapsed){
-      // 데스크탑: 목록 접기/펼치기
-      document.body.classList.toggle('side-collapsed', collapsed);
-      // 접혀 있으면 '목록 패널이 닫혀있다' → expanded=false
-      btn?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    }
-
-    function handleClick(){
-      if (isM()) {
-        const on = !document.body.classList.contains('side-open');
-        setMobileOpen(on);
-      } else {
-        const collapsed = !document.body.classList.contains('side-collapsed');
-        setCollapsed(collapsed);
-      }
-    }
-
-    btn?.addEventListener('click', (e)=>{ e.preventDefault(); handleClick(); });
-    bd?.addEventListener('click', ()=> setMobileOpen(false));
-    document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') setMobileOpen(false); });
-    mq.addEventListener?.('change', ()=>{
-      if (isM()) {
-        // 모바일로 진입하면 데스크탑용 '접힘' 상태를 반드시 해제해야
-        // overlay 토글이 정상 동작함.
-        document.body.classList.remove('side-collapsed');
-        setMobileOpen(false); // 기본은 닫힌 상태
-      } else {
-        // 데스크탑으로 돌아갈 때도 모바일 오버레이는 정리
-        setMobileOpen(false);
-      }
-      initExpandedState();
-    });
-  })();
-</script>
+  <!-- 인증 & 부트스트랩 & (모듈 엔트리)-->
+  <script type="module" src="/assets/editor/index.js" defer></script>
 </body>
 </html>`;
 }
