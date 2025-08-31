@@ -48,7 +48,8 @@ function applyStrictSecurity(res: any, reqHost?: string, protoHint = "https") {
     "default-src 'self'",
     "base-uri 'self'",
     "frame-ancestors 'self'",
-    "img-src 'self' data: https:",
+    "img-src 'self' data: https: blob:",
+    "media-src 'self' data: https: blob:",
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com",
     "font-src  'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com",
     "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net",
@@ -426,7 +427,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let html = renderEditorHTML({ version: process.env.EDITOR_ASSET_VER || "v12" });
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.setHeader("cache-control", "no-store");
-      harden(res, req);
+      // 에디터 전용 CSP (인라인 스크립트 허용 + blob 이미지 허용)
+      setSecurityHeadersVercel(res);
+      {
+        const proto = (req.headers["x-forwarded-proto"] as string) || "https";
+        const host  = (req.headers.host as string) || "";
+        const isLocal = /localhost|127\.0\.0\.1|::1/.test(host);
+        const editorCSP = [
+          "default-src 'self'",
+          "base-uri 'self'",
+          "frame-ancestors 'self'",
+          "img-src 'self' data: https: blob:",
+          "media-src 'self' data: https: blob:",
+          "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com",
+          "font-src  'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com",
+          // ↓ 에디터 페이지에서만 인라인 스크립트 허용
+          "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net",
+          "connect-src 'self'"
+        ].join("; ");
+        res.setHeader("Content-Security-Policy", editorCSP);
+        if (!isLocal && proto === "https") {
+          res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+        }
+      }
       return res.status(200).send(html);
     }
 
