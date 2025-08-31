@@ -20,4 +20,24 @@
 
   // 필요시 전역 노출
   window.SidePanel = { open, close, toggle };
+
+  // /public/assets/site.js 또는 /public/assets/press.js에 추가
+  (function () {
+    function hydrateImages() {
+      document.querySelectorAll('img[data-src]').forEach(img => {
+        img.setAttribute('src', img.getAttribute('data-src'));
+        img.removeAttribute('data-src');
+      });
+      document.querySelectorAll('source[data-srcset]').forEach(s => {
+        s.setAttribute('srcset', s.getAttribute('data-srcset'));
+        s.removeAttribute('data-srcset');
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', hydrateImages, { once: true });
+    } else {
+      hydrateImages();
+    }
+  })();
+
 })();
