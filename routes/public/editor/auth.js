@@ -1,5 +1,13 @@
 // auth.js
-import { setHint } from "./utils.js";
+import { setHint } from "../../../lib/pages/editor/utils.js";
+
+const _authListeners = [];
+export function onAuthState(fn){ _authListeners.push(fn); }
+function _emit(ok){ try{ _authListeners.forEach(f=>f(!!ok)); }catch{} }
+// 로그인 성공/실패 지점 마지막에:
+//   setAuthToken(...) 끝에  document.body.classList.add("authed"); _emit(true);
+//   clearAuthToken(...) 끝에 document.body.classList.remove("authed"); _emit(false);
+
 
 export function getToken() {
   try {

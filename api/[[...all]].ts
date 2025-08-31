@@ -18,6 +18,10 @@ import { handleNewPost } from "../lib/api/newpost.js";
 
 import { createDb, bootstrapDb } from "../lib/db/bootstrap.js";
 
+// 파일 상단
+import fs from "node:fs/promises";
+import npath from "node:path";
+
 /* Env 타입(간소화) */
 type Env = {
   EDITOR_PASSWORD?: string;
@@ -180,6 +184,19 @@ async function withSiteJs(resp: globalThis.Response): Promise<globalThis.Respons
   return new Response(patched, { status: resp.status, headers });
 }
 
+function safeJoin(base: string, reqPath: string) {
+  const p = reqPath.replace(/^\/+/, "");
+  const full = npath.join(base, p);
+  if (!full.startsWith(base)) throw new Error("Bad path");
+  return full;
+}
+function mimeByExt(fp: string) {
+  if (fp.endsWith(".js")) return "application/javascript; charset=utf-8";
+  if (fp.endsWith(".css")) return "text/css; charset=utf-8";
+  if (fp.endsWith(".map")) return "application/json; charset=utf-8";
+  return "application/octet-stream";
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const env = process.env as unknown as Env;
   const proto = (req.headers["x-forwarded-proto"] as string) || "https";
@@ -259,6 +276,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(500).json({ ok: false, error: String(e?.message || e) });
       }
     }
+
+      // A) 비공개 에디터 자산 서빙 (인증 필요)
+    if (path.startsWith("/editor/asset/") && req.method === "GET") {
+      const tok = getEditorTokenFromHeaders(req);
+      const ok = !!tok && tok === (env.EDITOR_PASSWORD || "").trim();
+      if (!ok) {
+        harden(res, req);
+        return res.status(401).send("Unauthorized");
+      }
+      try {
+        const rel  = path.slice("/editor/asset/".length);
+        const base = npath.join(process.cwd(), "lib", "pages", "editor");
+        const file = safeJoin(base, rel);
+        const buf  = await fs.readFile(file);
+        res.setHeader("content-type", mimeByExt(file));
+        res.setHeader("cache-control", "private, max-age=0, must-revalidate");
+        harden(res, req);
+        return res.status(200).send(buf);
+      } catch {
+        harden(res, req);
+        return res.status(404).send("Not found");
+      }
+    }
+
 
     // 1) 에디터 키 체크
     if (path === "/api/check-key" && req.method === "GET") {
@@ -413,7 +454,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const single = /^\/([^/]+)\/?$/.test(p);
       const last = p.split("/").filter(Boolean).pop() || "";
       const looksFile = last.includes(".");
-      const reserved = ["/api/", "/assets/", "/post/", "/tag/", "/editor", "/rss.xml", "/favicon", "/robots.txt", "/sitemap.xml"];
+      const reserved = ["/api/", "/assets/", "/post/", "/tag/", "/editor/asset/", "/editor", "/rss.xml", "/favicon", "/robots.txt", "/sitemap.xml"];
       const isReserved = reserved.some((r) => p === r || p.startsWith(r));
       if (p !== "/" && single && !looksFile && !isReserved) {
         const slug = decodeURIComponent(p.replace(/^\/|\/$/g, ""));
