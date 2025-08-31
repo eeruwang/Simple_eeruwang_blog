@@ -184,8 +184,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const env = process.env as unknown as Env;
   const proto = (req.headers["x-forwarded-proto"] as string) || "https";
   const url = new URL(req.url!, `${proto}://${req.headers.host}`);
-  const rawPath = (req.query.path as string | undefined) ?? "";
-  const path = rawPath ? `/${rawPath.replace(/^\/+/, "")}` : url.pathname;
+  const hasPathParam = Object.prototype.hasOwnProperty.call(req.query, "path");
+  const rawPath = hasPathParam ? String((req.query as any).path ?? "") : undefined;
+  const path = hasPathParam ? ("/" + String(rawPath).replace(/^\/+/, "")) : url.pathname;
 
   // 🔒 레이트리미트 (쓰기 메서드, /api/* 만)
   if (path.startsWith("/api/") && ["POST","PUT","PATCH","DELETE"].includes((req.method||"").toUpperCase())) {

@@ -3,7 +3,9 @@
 // - posts 스키마/인덱스/트리거 없으면 생성
 // - 요청값으로 새 글 생성(기본값은 샘플 글)
 
-import { createDb, type Env as DbEnv } from "./editor.js";
+import { createDb, bootstrapDb } from "../db/bootstrap.js";
+import type { DB, Env } from "../db/bootstrap.js";
+
 
 function j(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -12,7 +14,7 @@ function j(data: any, status = 200) {
   });
 }
 
-function authed(req: Request, env: DbEnv) {
+function authed(req: Request, env: Env) {
   const pass =
     env.EDITOR_PASSWORD ||
     (globalThis as any).process?.env?.EDITOR_PASSWORD ||
@@ -81,7 +83,7 @@ async function uniqueSlug(db: Awaited<ReturnType<typeof createDb>>, base: string
   }
 }
 
-export async function handleNewPost(req: Request, env: DbEnv): Promise<Response> {
+export async function handleNewPost(req: Request, env: Env): Promise<Response> {
   if (!authed(req, env)) return j({ error: "unauthorized" }, 401);
 
   const u = new URL(req.url);

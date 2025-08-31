@@ -1,5 +1,6 @@
 // lib/bibtex/config.ts
-import type { Env } from "../api/editor.js";
+import type { Env } from "../db/bootstrap.js";
+
 
 type DBLike = { query: (sql: string, params?: any[]) => Promise<{ rows: any[] }> };
 
