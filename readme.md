@@ -119,7 +119,7 @@ src/
 ---
 
 ### Third-party Notice (Fonts)
-이 프로젝트는 마크다운 코드 블록에 **Inconsolata Nerd Font**를 사용합니다. 이 폰트는 **Nerd Fonts** 프로젝트가 원본 **Inconsolata**(Raph Levien)를 패치한 배포본이며, **SIL Open Font License 1.1 (OFL-1.1)**을 따릅니다.  
+이 프로젝트는 마크다운 코드 블록에 **Inconsolata Nerd Font**를 사용합니다. 이 폰트는 **[Nerd Fonts](https://www.nerdfonts.com/font-downloads)** 프로젝트가 원본 **Inconsolata**(Raph Levien)를 패치한 배포본이며, **SIL Open Font License 1.1 (OFL-1.1)**을 따릅니다.  
 > 폰트 파일은 CC BY-NC 4.0의 적용 대상이 아니며, 각자의 라이선스(OFL-1.1)를 그대로 유지합니다.
 
 - Original Font: *Inconsolata* — © Raph Levien  
