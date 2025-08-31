@@ -10,7 +10,7 @@ import { seoTags } from "../../lib/seo.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 
 // ★ 추가
-import { createDb } from "../../lib/api/editor.js";
+import { createDb } from "../../lib/db/bootstrap.js";
 import { resolveBibtexConfig } from "../../lib/bibtex/config.js";
 import { processBib } from "../../lib/bibtex/bibtex.js";
 import { withBibliography } from "../../lib/util.js";  // ← 여기!
