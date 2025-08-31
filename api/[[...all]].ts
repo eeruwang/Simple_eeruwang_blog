@@ -1,18 +1,22 @@
 // api/[[...all]].ts
-import { handleNewPost } from "../lib/api/newpost.js";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 export const config = { runtime: "nodejs" };
 
-import { put } from "@vercel/blob";
+// public routes
 import { renderIndex } from "../routes/public/index.js";
 import { renderPost } from "../routes/public/post.js";
 import { renderPage } from "../routes/public/page.js";
 import { renderTag } from "../routes/public/tag.js";
 import { renderRSS } from "../routes/public/rss.js";
+
+// editor page (서버가 HTML만 렌더)
 import { renderEditorHTML } from "../lib/pages/editor.js";
+
+// editor API
 import { handleEditorApi } from "../lib/api/editor.js";
-import { pingDb } from "../lib/db/db.js";
-import { createDb, bootstrapDb } from "../lib/api/editor.js";
+import { handleNewPost } from "../lib/api/newpost.js";
+
+import { createDb, bootstrapDb } from "../lib/db/bootstrap.js"; // ← 여기로 이동!
 
 /* Env 타입(간소화) */
 type Env = {
@@ -41,6 +45,7 @@ function applyStrictSecurity(res: any, reqHost?: string, protoHint = "https") {
     "base-uri 'self'",
     "frame-ancestors 'self'",
     "img-src 'self' data: https:",
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
     "font-src 'self' data: https:",
     "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net",
     "connect-src 'self'"
@@ -53,8 +58,6 @@ function applyStrictSecurity(res: any, reqHost?: string, protoHint = "https") {
     res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   }
 }
-
-const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 
 /* ── 토큰 도우미 ── */
 function getEditorTokenFromHeaders(req: VercelRequest): string {
@@ -129,7 +132,10 @@ function applyEditorCors(req: VercelRequest, res: VercelResponse, env: Env) {
     res.setHeader("Vary", "Origin");
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Editor-Token, X-Editor-Key");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, X-Editor-Token, X-Editor-Key, x-editor-token, x-editor-key"
+  );
   res.setHeader("Access-Control-Max-Age", "600");
 }
 
@@ -193,7 +199,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 0) 헬스체크 (공개)
     if (path === "/api/diag-db" && req.method === "GET") {
       try {
-        const r = await pingDb();
+        const db = createDb(process.env as any);
+        const { rows } = await db.query("select now()");
+        const r = { now: rows?.[0]?.now ?? null };
         harden(res, req);
         return res.status(200).json({ ok: true, ...r });
       } catch (e: any) {
@@ -275,7 +283,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).json({ error: "Unauthorized" });
       }
       try {
-        const info = await pingDb();
+        const db = createDb(process.env as any);
+        const { rows } = await db.query("select now()");
+        const info = { now: rows?.[0]?.now ?? null };
         harden(res, req);
         return res.status(200).json({ ok: true, db: info });
       } catch (e: any) {
