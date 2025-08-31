@@ -15,3 +15,20 @@ if (document.body.dataset.auth === "1") loadApp();
 new MutationObserver(() => {
   if (document.body.dataset.auth === "1") loadApp();
 }).observe(document.body, { attributes:true, attributeFilter:["data-auth"] });
+
+
+// public/assets/editor/login.js (하단에 추가)
+(function bindBackLink() {
+  function bind() {
+    var a = document.querySelector('[data-back]');
+    if (!a) return;
+    a.addEventListener('click', function (e) {
+      if (history.length > 1) { e.preventDefault(); history.back(); }
+    }, { passive: false });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind, { once: true });
+  } else {
+    bind();
+  }
+})();
