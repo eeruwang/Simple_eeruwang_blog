@@ -1,5 +1,5 @@
 // auth.js
-import { setHint } from "../../../lib/pages/editor/utils.js";
+import { setHint } from "../../lib/pages/editor/utils.js";
 
 const _authListeners = [];
 export function onAuthState(fn){ _authListeners.push(fn); }
