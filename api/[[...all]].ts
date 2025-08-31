@@ -370,10 +370,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 4) 에디터 HTML
     if (path === "/editor" && req.method === "GET") {
       let html = renderEditorHTML({ version: process.env.EDITOR_ASSET_VER || "v12" });
-      if (!/type="module"\s+src="\/assets\/editor\.js"/.test(html)) {
-        const inject = `<script type="module" src="/assets/editor/index.js" defer></script>`;
-        html = html.includes("</body>") ? html.replace("</body>", `${inject}\n</body>`) : `${html}\n${inject}\n`;
-      }
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.setHeader("cache-control", "no-store");
       harden(res, req);

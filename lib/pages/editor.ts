@@ -126,9 +126,6 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       </div>
     </div>
   </div>
-
-  <!-- 인증 & 부트스트랩 & (모듈 엔트리)-->
-  <script type="module" src="/assets/editor/index.js" defer></script>
 </body>
 </html>`;
 }
