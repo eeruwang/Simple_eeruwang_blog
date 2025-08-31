@@ -45,8 +45,8 @@ function applyStrictSecurity(res: any, reqHost?: string, protoHint = "https") {
     "base-uri 'self'",
     "frame-ancestors 'self'",
     "img-src 'self' data: https:",
-    "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-    "font-src 'self' data: https:",
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com",
+    "font-src  'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com",
     "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net",
     "connect-src 'self'"
   ].join("; ");
@@ -369,8 +369,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 4) 에디터 HTML
     if (path === "/editor" && req.method === "GET") {
       let html = renderEditorHTML({ version: process.env.EDITOR_ASSET_VER || "v12" });
-      if (!/\/assets\/editor\.js/.test(html)) {
-        const inject = `<script src="/assets/editor.js" defer></script>`;
+      if (!/type="module"\s+src="\/assets\/editor\.js"/.test(html)) {
+        const inject = `<script type="module" src="/assets/editor.js" defer></script>`;
         html = html.includes("</body>") ? html.replace("</body>", `${inject}\n</body>`) : `${html}\n${inject}\n`;
       }
       res.setHeader("content-type", "text/html; charset=utf-8");
