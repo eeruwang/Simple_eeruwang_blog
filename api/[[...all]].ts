@@ -73,8 +73,19 @@ function getEditorTokenFromHeaders(req: VercelRequest): string {
 }
 
 function getEditorToken(req: VercelRequest, url: URL): string {
-  return getEditorTokenFromHeaders(req) || (url.searchParams.get("token") || "").trim();
+  const fromHeader = getEditorTokenFromHeaders(req);
+  if (fromHeader) return fromHeader;
+  const fromQuery = (url.searchParams.get("token") || "").trim();
+  if (fromQuery) return fromQuery;
+  // ▼ 쿠키 파싱 (editor_token=...)
+  const raw = (req.headers.cookie || "").toString();
+  if (raw) {
+    const m = raw.split(";").map(s => s.trim()).find(s => s.startsWith("editor_token="));
+    if (m) return decodeURIComponent(m.split("=").slice(1).join("="));
+  }
+  return "";
 }
+
 
 /* ── 공개 GET 화이트리스트 ──
    - GET /api/posts            (목록, ?slug= 또는 ?id= 포함)
@@ -279,7 +290,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // A) 비공개 에디터 자산 서빙 (인증 필요)
     if (path.startsWith("/editor/asset/") && req.method === "GET") {
-      const tok = getEditorTokenFromHeaders(req);
+      const tok = getEditorToken(req, url); // 헤더 or ?token or 쿠키
       const ok = !!tok && tok === (env.EDITOR_PASSWORD || "").trim();
       if (!ok) {
         harden(res, req);
