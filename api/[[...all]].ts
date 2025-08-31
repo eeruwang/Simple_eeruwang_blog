@@ -93,11 +93,11 @@ function getEditorToken(req: VercelRequest, url: URL): string {
    - GET /api/posts/:id        (단건)
    - GET /api/diag-db          (헬스체크)
 */
-function isPublicApiGet(req: VercelRequest, url: URL): boolean {
-  if (req.method !== "GET") return false;
+function isPublicApiGet(_req: VercelRequest, url: URL): boolean {
+  if (_req.method !== "GET") return false;
   const p = url.pathname;
-  if (p === "/api/posts") return true;
-  if (/^\/api\/posts\/\d+$/.test(p)) return true;
+  if (p === "/api/posts") return true;        
+  // if (/^\/api\/posts\/\d+$/.test(p)) return true;
   if (p === "/api/diag-db") return true;
   return false;
 }

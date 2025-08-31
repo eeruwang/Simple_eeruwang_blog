@@ -130,16 +130,18 @@ function mdToHtml(md?: string, fallbackHtml?: string): string {
   return h;
 }
 
-
 async function fetchPublicPostBySlug(env: Env, slug: string): Promise<ApiPost | null> {
   const base = baseUrl(env);
   const url = `${base}/api/posts?slug=${encodeURIComponent(slug)}`;
-  const res = await fetch(url, { headers: { "cache-control": "no-store" } });
+  const headers: Record<string, string> = { "cache-control": "no-store" };
+  const tok = String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim();
+  if (tok) headers["x-editor-token"] = tok;            // ★ 인증 헤더
+
+  const res = await fetch(url, { headers });
   if (!res.ok) return null;
   const j = await res.json();
   const item: ApiPost | undefined = j?.item;
   if (!item) return null;
-
   if (item.published !== true || item.is_page === true) return null;
   return item;
 }
