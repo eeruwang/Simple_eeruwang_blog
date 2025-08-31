@@ -1,5 +1,5 @@
 // public/assets/editor/login.js
-import * as auth from "./auth.js";
+import * as auth from "/assets/editor/auth.js";
 auth.wireLoginUI();
 
 let loaded = false;
