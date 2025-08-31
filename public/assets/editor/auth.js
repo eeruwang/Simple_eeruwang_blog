@@ -20,6 +20,7 @@ export function setAuthToken(token) {
     document.cookie = `editor_token=${encodeURIComponent(token)}; path=/; SameSite=Lax`;
   } catch {}
   document.body.setAttribute("data-auth", "1");
+  document.body.classList.add("authed");
 }
 
 export function authHeaders(h) {

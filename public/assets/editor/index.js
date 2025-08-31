@@ -56,6 +56,8 @@ function responsiveSide() {
 }
 
 export async function initEditor() {
+  if (window.__EDITOR_BOOTED) { console.warn("[editor] init skipped (already booted)"); return; }
+  window.__EDITOR_BOOTED = true;
   wireLoginUI();
   responsiveSide();
 
