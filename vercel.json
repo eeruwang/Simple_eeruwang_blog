@@ -11,6 +11,11 @@
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/api/[[...all]]?path=$1" }
   ],
+  "rewrites": [
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },  
+    { "source": "/favicon.ico", "destination": "/favicon.ico" },
+    { "source": "/(.*)", "destination": "/api/[[...all]]" } 
+  ],
   "functions": {
     "api/[[...all]].ts": {
       "includeFiles": "lib/pages/editor/**"
