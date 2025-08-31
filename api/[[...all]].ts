@@ -288,7 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-      // A) 비공개 에디터 자산 서빙 (인증 필요)
+    // A) 비공개 에디터 자산 서빙 (인증 필요)
     if ((path.startsWith("/editor/asset/") || path.startsWith("/lib/pages/editor/")) && req.method === "GET") {
       const tok = getEditorToken(req, url); // 헤더 or ?token or 쿠키
       const ok = !!tok && tok === (env.EDITOR_PASSWORD || "").trim();
