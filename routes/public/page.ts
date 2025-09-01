@@ -36,23 +36,34 @@ function baseUrl(env: Env): string {
   return vurl ? `https://${String(vurl).replace(/\/+$/, "")}` : "";
 }
 
+// routes/public/page.ts — fetchPublicPageBySlug 교체
 async function fetchPublicPageBySlug(env: Env, slug: string): Promise<ApiPage | null> {
   const base = baseUrl(env);
-  const url = `${base}/api/posts?slug=${encodeURIComponent(slug)}`;
-  const headers: Record<string, string> = { "cache-control": "no-store" };
-  // 서버에서 초안 미리보기 허용하려면 에디터 토큰을 붙일 수 있음(공개 페이지만 통과됨)
+  const headers: Record<string,string> = { "cache-control":"no-store" };
   const tok = String((env as any).EDITOR_PASSWORD || "").trim();
   if (tok) headers["x-editor-token"] = tok;
 
-  const res = await fetch(url, { headers });
-  if (!res.ok) return null;
-  const j = await res.json().catch(() => null);
-  const item = j?.item as ApiPage | undefined;
+  // 1) slug로 얕은 레코드
+  const r = await fetch(`${base}/api/posts?slug=${encodeURIComponent(slug)}`, { headers });
+  if (!r.ok) return null;
+  const j = await r.json().catch(()=>null);
+  let item = j?.item as ApiPage | undefined;
   if (!item) return null;
-  // 페이지이면서 공개글만 렌더
   if (item.is_page !== true || item.published !== true) return null;
+
+  // 2) 본문이 없으면 id로 단건 재조회(본문 포함)
+  const hasBody = typeof (item as any).body_md === "string" || typeof (item as any).bodyMd === "string";
+  if (!hasBody && item.id) {
+    const r2 = await fetch(`${base}/api/posts/${item.id}`, { headers });
+    if (r2.ok) {
+      const j2 = await r2.json().catch(()=>null);
+      const full = (j2?.item || j2?.record || j2) as any;
+      if (full) item = { ...item, body_md: full.body_md ?? full.bodyMd ?? null, body_html: full.body_html ?? full.bodyHtml ?? null };
+    }
+  }
   return item;
 }
+
 
 // <head>에 SEO 태그 삽입
 async function withSeoHead(resp: Response, headExtra: string): Promise<Response> {
@@ -72,14 +83,16 @@ async function withContentHTML(resp: Response, bodyHtml: string): Promise<Respon
   const ct = resp.headers.get("content-type") || "";
   if (!/text\/html/i.test(ct)) return resp;
   const src = await resp.text();
-  const idx = src.indexOf('<div id="content"');
-  if (idx < 0) return resp;
-  const gt = src.indexOf(">", idx);
-  const html = src.slice(0, gt + 1) + (bodyHtml || "") + src.slice(gt + 1);
+
+  const tagRx = /<div\b[^>]*\bid\s*=\s*["']content["'][^>]*>/i;
+  if (!tagRx.test(src)) return resp;               // 틀에 #content가 없다면 원본 반환
+  const out = src.replace(tagRx, (m) => m + (bodyHtml || ""));  // 오픈 태그 직후에 꽂기
+
   const h = new Headers(resp.headers);
   if (!h.get("content-type")) h.set("content-type", "text/html; charset=utf-8");
-  return new Response(html, { status: resp.status, headers: h });
+  return new Response(out, { status: resp.status, headers: h });
 }
+
 
 export async function renderPage(env: Env, slug: string, searchParams?: URLSearchParams): Promise<Response> {
   const s = String(slug || "").trim();
