@@ -27,19 +27,35 @@ function json(data: any, status = 200): Response {
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
-// 요청 바디를 안전하게 JSON으로 읽기
-// - content-type이 애매하거나, Vercel 프록시에서 바디가 버퍼/텍스트로 들어와도 복구
-async function readJsonSafe(req: Request): Promise<any> {
-  try {
-    return await req.json();
-  } catch {
-    try {
-      const t = await req.text();
-      return t ? JSON.parse(t) : {};
-    } catch {
-      return {};
-    }
+// 요청 바디를 "확실히" 파싱 (JSON / text(JSON) / x-www-form-urlencoded 지원)
+async function readBodySmart(req: Request): Promise<any> {
+  const ctype = (req.headers.get("content-type") || "").toLowerCase();
+  // JSON 계열
+  if (ctype.includes("application/json") || ctype.includes("text/json")) {
+    try { return await req.json(); } catch {}
+    try { const t = await req.text(); return t ? JSON.parse(t) : {}; } catch {}
+    return {};
   }
+  // URL-encoded 폼
+  if (ctype.includes("application/x-www-form-urlencoded")) {
+    const t = await req.text();
+    const out: Record<string, string> = {};
+    for (const pair of t.split("&")) {
+      if (!pair) continue;
+      const [k, v=""] = pair.split("=");
+      const key = decodeURIComponent(k.replace(/\+/g, " "));
+      const val = decodeURIComponent(v.replace(/\+/g, " "));
+      out[key] = val;
+    }
+    return out;
+  }
+  // 멀티파트는 업로드 분기에서 별도 처리함
+  // 그 외(text/plain 등): 텍스트가 JSON이면 파싱 시도
+  try {
+    const t = await req.text();
+    if (!t) return {};
+    try { return JSON.parse(t); } catch { return { text: t }; }
+  } catch { return {}; }
 }
 
 
@@ -177,7 +193,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     }
 
     if (request.method === "PUT") {
-      const body = await readJsonSafe(request);
+      const body = await readBodySmart(request);
       const key = String(body?.key || "").trim();
       const val = String(body?.value ?? "");
       if (!key) return json({ error: "key required" }, 400);
@@ -189,7 +205,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
   // ── 미리보기: POST /api/posts/preview
   if (pathname === "/api/posts/preview" && request.method === "POST") {
     if (!isEditor) return json({ error: "unauthorized" }, 401);
-    const body = await readJsonSafe(request);
+    const body = await readBodySmart(request);
     const md = String(body?.md ?? body?.text ?? "");
 
     // ⬇ BibTeX 처리(환경변수 → DB 설정)
@@ -241,7 +257,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         contentType = file.type || "text/plain";
         bodyForPut = file; // Blob
       } else {
-        const body = await readJsonSafe(request);
+        const body = await readBodySmart(request);
         const raw = String(body?.data || "");
         filename = String(body?.name || filename);
         contentType = String(body?.contentType || contentType);
@@ -396,7 +412,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
   if (request.method === "POST" && postsRoot) {
     if (!isEditor) return json({ error: "unauthorized" }, 401);
 
-    const body = await readJsonSafe(request);
+    const body = await readBodySmart(request);
     const inputs = Array.isArray(body) ? body : [body];
 
     const createWithTx = async (): Promise<any[]> => {
@@ -461,7 +477,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     if (!m) return json({ error: "bad request" }, 400);
     const id = Number(m[1]);
 
-    const body = await readJsonSafe(request);
+    const body = await readBodySmart(request);
 
     try {
       const updated = await db.tx(async ({ query }) => {
@@ -516,10 +532,14 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         };
 
         if (typeof body.title === "string")        add("title", body.title || "(untitled)");
-        if (Object.prototype.hasOwnProperty.call(body, "body_md")) {
-          add("body_md", (body as any).body_md ?? "");
-        } else if (Object.prototype.hasOwnProperty.call(body, "bodyMd")) {
-          add("body_md", (body as any).bodyMd ?? "");
+        // ★ 본문 키 감지(여러 이름 허용) → 값이 오면 무조건 업데이트
+        {
+          const cand = (k: string) => (typeof (body as any)?.[k] === "string" ? String((body as any)[k]) : undefined);
+          const incomingBody =
+            cand("body_md") ?? cand("bodyMd") ?? cand("body") ?? cand("md") ?? cand("markdown");
+          if (typeof incomingBody !== "undefined") {
+            add("body_md", incomingBody);
+          }
         }
         if (typeof body.excerpt === "string")      add("excerpt", body.excerpt ?? "");
         if (typeof body.cover_url === "string")    add("cover_url", body.cover_url || null);
