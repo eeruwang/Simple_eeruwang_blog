@@ -8,6 +8,11 @@ import type { DB, Env } from "../db/bootstrap.js";
 // export { createDb, bootstrapDb } from "../db/bootstrap.js";
 // export type { DB, Env } from "../db/bootstrap.js";
 
+// ✅ 여기서 바로 재수출 (다른 모듈이 editor.js에서 가져가도록)
+export { createDb, bootstrapDb };
+export type { DB, Env };
+
+
 import { put, del } from "@vercel/blob";
 import { Buffer } from "node:buffer";
 import { normalizeSlug } from "../../lib/slug.js";
