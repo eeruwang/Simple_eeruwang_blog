@@ -47,7 +47,7 @@
       if (!r.ok) return;
       const j = await r.json().catch(() => null);
       const item = j && (j.item || j.record || j.fields || j);
-      const md = item && (item.body_md || item.content || "");
+      const md = item && (item.body_md || item.bodyMd || item.content || "");
 
       // marked가 있으면 사용, 아니면 tinyMd 사용
       let html = "";
