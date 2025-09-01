@@ -399,7 +399,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const db = await createDb(env as any);
             const q = `
               select id, slug, title, excerpt, tags, is_page, published, published_at,
-                    cover_url, created_at, updated_at, body_md, body_html
+                    cover_url, created_at, updated_at, body_md
                 from posts
               where ${slug ? "slug = $1" : "id = $1"}
               limit 1
