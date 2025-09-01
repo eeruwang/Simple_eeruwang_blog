@@ -385,41 +385,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 3) 에디터 API 라우트 (/api/…)
     if (path.startsWith("/api/")) {
-      const publicOk = isPublicApiGet(req, url); // 🔑 공개 GET이면 인증 생략
+      const publicOk = isPublicApiGet(req, url); // GET /api/posts, /api/diag-db
+      const editorTok = getEditorTokenFromHeaders(req);
+      const tokValid  = !!editorTok && editorTok === (env.EDITOR_PASSWORD || "").trim();
 
-      // ✅ 공개 슬러그/ID 단건은 여기서 바로 DB 조회해 본문까지 포함해 반환
-      if (req.method === "GET" && path === "/api/posts") {
+      // ✅ 공개 슬러그/ID 단건: 오직 "토큰이 없을 때만" 여기서 직접 응답
+      if (!tokValid && req.method === "GET" && path === "/api/posts") {
         const slug = (url.searchParams.get("slug") || "").trim();
         const id   = (url.searchParams.get("id") || "").trim();
 
         if (slug || id) {
           try {
             const db = await createDb(env as any);
+            const q = `
+              select id, slug, title, excerpt, tags, is_page, published, published_at,
+                    cover_url, created_at, updated_at, body_md, body_html
+                from posts
+              where ${slug ? "slug = $1" : "id = $1"}
+              limit 1
+            `;
+            const arg = slug ? slug : (Number(id) || 0);
+            const { rows } = await db.query(q, [arg]);
+            const row = rows?.[0] || null;
 
-            let row: any = null;
-            if (slug) {
-              const { rows } = await db.query(
-                `select id, slug, title, excerpt, tags, is_page, published, published_at,
-                        cover_url, created_at, updated_at, body_md, body_html
-                  from posts
-                  where slug = $1
-                  limit 1`,
-                [slug]
-              );
-              row = rows?.[0] || null;
-            } else {
-              const idNum = Number(id) || 0;
-              const { rows } = await db.query(
-                `select id, slug, title, excerpt, tags, is_page, published, published_at,
-                        cover_url, created_at, updated_at, body_md, body_html
-                  from posts
-                  where id = $1
-                  limit 1`,
-                [idNum]
-              );
-              row = rows?.[0] || null;
-            }
-
+            // 공개 요청은 공개 글만 허용
             if (!row || row.published !== true) {
               applyEditorCors(req, res, env);
               harden(res, req);
@@ -437,16 +426,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
+      // 🔐 토큰 필요한 요청은 기존처럼 인증 체크
       if (!publicOk) {
-        const tok = getEditorTokenFromHeaders(req);
-        if (!tok || tok !== (env.EDITOR_PASSWORD || "").trim()) {
+        if (!tokValid) {
           applyEditorCors(req, res, env);
           harden(res, req);
           return res.status(401).json({ error: "Unauthorized" });
         }
       }
 
-      // 원본 요청을 WHATWG Request로 변환해서 editor API에 위임
+      // 나머지는 기존 핸들러로 위임
       const headers = new Headers();
       for (const [k, v] of Object.entries(req.headers)) {
         if (Array.isArray(v)) headers.set(k, v.join(", "));
@@ -479,6 +468,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       applyEditorCors(req, res, env);
       return await sendFetchResponse(req, res, r);
     }
+
 
 
     // 4) 에디터 HTML
