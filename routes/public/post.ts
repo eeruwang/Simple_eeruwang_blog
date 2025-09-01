@@ -130,11 +130,10 @@ function mdToHtml(md?: string, fallbackHtml?: string): string {
   return h;
 }
 
-async function fetchPublicPostBySlug(env: Env, slug: string): Promise<ApiPost | null> {
+async function fetchPublicPostBySlug(env: Env, slug: string, isPreview = false): Promise<ApiPost | null> {
   const base = baseUrl(env);
   const url = `${base}/api/posts?slug=${encodeURIComponent(slug)}`;
   const headers: Record<string, string> = { "cache-control": "no-store" };
-  const isPreview = searchParams?.get?.("preview") === "1";
   const tok = isPreview
     ? String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim()
     : "";
@@ -159,8 +158,9 @@ export async function renderPost(
   if (!s) return new Response("Not found", { status: 404 });
 
   const debug = !!searchParams?.get?.("debug");
+  const isPreview = searchParams?.get?.("preview") === "1";
 
-  const rec = await fetchPublicPostBySlug(env, s);
+  const rec = await fetchPublicPostBySlug(env, s, isPreview);
   if (!rec) return new Response("Not found", { status: 404 });
 
   // ✅ siteUrl을 항상 절대 URL로 보장해서 seoTags에 넘김
