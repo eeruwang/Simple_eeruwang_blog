@@ -408,7 +408,8 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
             returning id, title, slug, published, published_at`,
             [
               b.title || "(untitled)",
-              b.body_md ?? "",
+              (typeof b.body_md === "string" ? b.body_md
+                : (typeof b.bodyMd === "string" ? b.bodyMd : "")),
               uniqueSlug,
               tagsArr,
               b.excerpt ?? "",
@@ -502,6 +503,8 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         if (typeof body.title === "string")        add("title", body.title || "(untitled)");
         if (Object.prototype.hasOwnProperty.call(body, "body_md")) {
           add("body_md", (body as any).body_md ?? "");
+        } else if (Object.prototype.hasOwnProperty.call(body, "bodyMd")) {
+          add("body_md", (body as any).bodyMd ?? "");
         }
         if (typeof body.excerpt === "string")      add("excerpt", body.excerpt ?? "");
         if (typeof body.cover_url === "string")    add("cover_url", body.cover_url || null);
