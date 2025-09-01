@@ -85,7 +85,7 @@ export function pageHtml(
     ${body}
   </main>
 
-  <footer>© ${year} {siteName}. All rights reserved.</footer>
+  <footer>© ${year} ${siteName}. All rights reserved.</footer>
 
   <!-- 전환 스크립트는 전역에서 한 번만 -->
   <script src="/assets/transition.js" defer></script>
