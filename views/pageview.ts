@@ -189,6 +189,11 @@ export async function renderPostPage(
     (bibHtml || "") +                // 이미 만들어진 경우는 그대로 붙음
     (bibDebug || "")
   );
+  // 클라이언트용 스크립트는 최소화(뒤로가기만 유지). marked CDN 제거!
+  const headExtra = `
+    <script src="/assets/press.js" defer></script>
+    <!-- transition.js는 pageHtml에서 전역 1회 로드 -->
+  `;
 
   const body = `<article>
   ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
@@ -203,9 +208,10 @@ export async function renderPostPage(
   <div id="content" class="content" style="margin-top:8px">${contentHtml}</div>
 </article>
 
-${bannersHtml}`;
+${bannersHtml}
+`;
 
-  return new Response(pageHtml({ title, body }, env as any), {
+  return new Response(pageHtml({ title, body, headExtra }, env as any), {
     headers: { "content-type": "text/html; charset=utf-8" },
   });
 }

@@ -500,7 +500,9 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         };
 
         if (typeof body.title === "string")        add("title", body.title || "(untitled)");
-        if (typeof body.body_md === "string")      add("body_md", body.body_md ?? "");
+        if (Object.prototype.hasOwnProperty.call(body, "body_md")) {
+          add("body_md", (body as any).body_md ?? "");
+        }
         if (typeof body.excerpt === "string")      add("excerpt", body.excerpt ?? "");
         if (typeof body.cover_url === "string")    add("cover_url", body.cover_url || null);
         if (typeof body.is_page === "boolean")     add("is_page", !!body.is_page, "::boolean");
