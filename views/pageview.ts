@@ -205,7 +205,7 @@ export async function renderPostPage(
 
 ${bannersHtml}`;
 
-  return new Response(pageHtml({ title, body, headExtra }, env as any), {
+  return new Response(pageHtml({ title, body }, env as any), {
     headers: { "content-type": "text/html; charset=utf-8" },
   });
 }
