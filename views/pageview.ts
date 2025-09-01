@@ -113,7 +113,7 @@ export async function renderPostPage(
   if (!allowDebug) debug = false;
 
   const title = (r.title ?? r.Title ?? "(제목 없음)") as string;
-  const rawMd = (r.body_md ?? r.Body_md ?? r.Body ?? "") as string;
+  const rawMd = (r.body_md ?? (r as any).bodyMd ?? r.Body_md ?? r.Body ?? "") as string;
   const date = (r.published_at ?? r.Published_at ?? "") as string;
   const dateStr = date ? new Date(date).toLocaleDateString("en-GB") : "";
   const coverSrc = (r.cover_url ?? r.Cover_url ?? r.cover ?? r.Cover) as string | undefined;

@@ -24,7 +24,7 @@ type ApiPost = {
   id: number;
   slug: string;
   title: string;
-  body_md?: string;
+  body_md?: string | null;
   tags?: string[];
   excerpt?: string | null;
   is_page?: boolean;
