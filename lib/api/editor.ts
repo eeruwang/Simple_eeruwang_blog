@@ -4,9 +4,9 @@
 import { createDb, bootstrapDb } from "../db/bootstrap.js";
 import type { DB, Env } from "../db/bootstrap.js";
 
-// ⬇ 레거시 경로 호환(다른 파일이 lib/api/editor.js에서 import해도 동작하도록)
-export { createDb, bootstrapDb } from "../db/bootstrap.js";
-export type { DB, Env } from "../db/bootstrap.js";
+// // ⬇ 레거시 경로 호환(다른 파일이 lib/api/editor.js에서 import해도 동작하도록)
+// export { createDb, bootstrapDb } from "../db/bootstrap.js";
+// export type { DB, Env } from "../db/bootstrap.js";
 
 import { put, del } from "@vercel/blob";
 import { Buffer } from "node:buffer";
@@ -400,7 +400,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     const inputs = Array.isArray(body) ? body : [body];
 
     const createWithTx = async (): Promise<any[]> => {
-      return db.tx(async ({ query }) => {
+      return db.tx(async ({ query }: { query: DB["query"] }) => {
         const out: any[] = [];
         for (const b of inputs) {
           const tagsArr = Array.isArray(b.tags)
@@ -464,7 +464,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     const body = await readJsonSafe(request);
 
     try {
-      const updated = await db.tx(async ({ query }) => {
+      const updated = await db.tx(async ({ query }: { query: DB["query"] }) => {
         // 현재 행
         const { rows: curRows } = await query(
           `select id, title, slug, body_md, tags, excerpt, is_page, published, published_at, cover_url
