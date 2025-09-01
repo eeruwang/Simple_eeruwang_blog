@@ -17,44 +17,6 @@ type Env = {
   [k: string]: unknown;
 };
 
-/* ── 레이트리미트(쓰기 메서드) ── */
-const RATE = { windowMs: 60_000, limit: 100 };
-const _bucket = new Map<string, { count: number; ts: number }>();
-function _allow(req: { headers: any }): boolean {
-  const ip = (req.headers["x-forwarded-for"] || req.headers["x-real-ip"] || "127.0.0.1").toString().split(",")[0].trim();
-  const now = Date.now();
-  const rec = _bucket.get(ip) || { count: 0, ts: now };
-  if (now - rec.ts > RATE.windowMs) { rec.count = 0; rec.ts = now; }
-  rec.count++;
-  _bucket.set(ip, rec);
-  return rec.count <= RATE.limit;
-}
-
-// ── 보안 헤더 확장: CSP + HSTS (prod/HTTPS에서만) ──
-function applyStrictSecurity(res: any, reqHost?: string, protoHint = "https") {
-  // 1) Content-Security-Policy (inline 제거 전 임시 구성)
-  // - 에디터의 inline <script type="module">를 제거하면 'unsafe-inline' 없이 더 강하게 바꿀 수 있습니다.
-  const CSP = [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "frame-ancestors 'self'",
-    "img-src 'self' data: https: blob:",
-    "media-src 'self' data: https: blob:",
-    "font-src 'self' data: https:",
-    "script-src 'self' https://unpkg.com https://cdn.jsdelivr.net",
-    "connect-src 'self'",
-    // 필요 시 업로드/Blob/외부 API 도메인이 있으면 connect-src에 추가
-  ].join("; ");
-  res.setHeader("Content-Security-Policy", CSP);
-
-  // 2) HSTS (HTTPS + 배포 환경에서만)
-  const host = reqHost || "";
-  const isLocal = /localhost|127\.0\.0\.1|::1/.test(host);
-  if (!isLocal && protoHint === "https") {
-    res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
-  }
-}
-
 function getEditorTokenFromHeaders(req: VercelRequest): string {
   // x-editor-token / x-editor-key 둘 다 허용
   return (
@@ -72,13 +34,6 @@ function setSecurityHeadersVercel(res: VercelResponse) {
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
-}
-
-// 공통 보안 헤더 묶음 (CSP/HSTS + 기존 보안 헤더)
-function harden(res: VercelResponse, req: VercelRequest) {
-  setSecurityHeadersVercel(res);
-  const proto = (req.headers["x-forwarded-proto"] as string) || "https";
-  applyStrictSecurity(res, req.headers.host as string, proto);
 }
 
 function originOf(u?: string | string[]): string | null {
@@ -106,11 +61,11 @@ function applyEditorCors(req: VercelRequest, res: VercelResponse, env: Env) {
   res.setHeader("Access-Control-Max-Age", "600");
 }
 
-/* WHATWG Response → Vercel res 브리지 (+ 보안 헤더) */
-async function sendFetchResponse(req: VercelRequest, res: VercelResponse, r: globalThis.Response) {
+/* WHATWG Response → Vercel res 브리지 */
+async function sendFetchResponse(res: VercelResponse, r: globalThis.Response) {
   res.status(r.status);
   r.headers.forEach((v, k) => res.setHeader(k, v));
-  harden(res, req); // 여기서 한 번에 보안 헤더 주입
+  setSecurityHeadersVercel(res); // 보안 헤더 보강
   const buf = Buffer.from(await r.arrayBuffer());
   res.send(buf);
 }
@@ -157,18 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? `/${rawPath.replace(/^\/+/, "")}`
     : url.pathname;
 
-  /* 🔒 레이트리미트: /api/* 쓰기 메서드에만 적용 */
-  if (path.startsWith("/api/") && ["POST","PUT","PATCH","DELETE"].includes((req.method||"").toUpperCase())) {
-    harden(res, req);
-    if (!_allow(req)) {
-      return res.status(429).send("Too Many Requests");
-    }
-  }
-
   try {
     // 0) 헬스체크
     if (path === "/api/ping" && req.method === "GET") {
-      harden(res, req);
+      setSecurityHeadersVercel(res);
       return res.status(200).json({ ok: true });
     }
 
@@ -176,14 +123,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path === "/api/check-key" && req.method === "GET") {
       const tok = getEditorTokenFromHeaders(req);
       const ok = !!tok && tok === env.EDITOR_PASSWORD;
-      harden(res, req);
+      setSecurityHeadersVercel(res);
       return res.status(ok ? 200 : 401).json({ ok });
     }
 
     // (프리플라이트)
     if (path.startsWith("/api/") && req.method === "OPTIONS") {
       applyEditorCors(req, res, env);
-      harden(res, req);
+      setSecurityHeadersVercel(res);
       return res.status(204).end();
     }
 
@@ -192,15 +139,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const tok = getEditorTokenFromHeaders(req);
       if (!tok || tok !== env.EDITOR_PASSWORD) {
         applyEditorCors(req, res, env);
-        harden(res, req);
+        setSecurityHeadersVercel(res);
         return res.status(401).json({ error: "Unauthorized" });
       }
       try {
         const info = await pingDb();
-        harden(res, req);
+        setSecurityHeadersVercel(res);
         return res.status(200).json({ ok: true, db: info });
       } catch (e: any) {
-        harden(res, req);
+        setSecurityHeadersVercel(res);
         return res.status(500).json({ ok: false, error: String(e) });
       }
     }
@@ -211,7 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const tok = getEditorTokenFromHeaders(req);
       if (!tok || tok !== env.EDITOR_PASSWORD) {
         applyEditorCors(req, res, env);
-        harden(res, req);
+        setSecurityHeadersVercel(res);
         return res.status(401).json({ error: "Unauthorized" });
       }
 
@@ -245,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const r = await handleEditorApi(webReq, env);
       applyEditorCors(req, res, env);
-      return await sendFetchResponse(req, res, r);
+      return await sendFetchResponse(res, r);
     }
 
     // 4) 에디터 HTML
@@ -259,29 +206,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       res.setHeader("content-type", "text/html; charset=utf-8");
       res.setHeader("cache-control", "no-store");
-      // 에디터 전용 CSP (인라인 스크립트 허용 + blob 이미지 허용)
       setSecurityHeadersVercel(res);
-      {
-        const proto = (req.headers["x-forwarded-proto"] as string) || "https";
-        const host  = (req.headers.host as string) || "";
-        const isLocal = /localhost|127\.0\.0\.1|::1/.test(host);
-        const editorCSP = [
-          "default-src 'self'",
-          "base-uri 'self'",
-          "frame-ancestors 'self'",
-          "img-src 'self' data: https: blob:",
-          "media-src 'self' data: https: blob:",
-          "style-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com",
-          "font-src  'self' data: https://cdnjs.cloudflare.com https://fonts.gstatic.com",
-          // ↓ 에디터 페이지에서만 인라인 스크립트 허용
-          "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net",
-          "connect-src 'self'"
-        ].join("; ");
-        res.setHeader("Content-Security-Policy", editorCSP);
-        if (!isLocal && proto === "https") {
-          res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
-        }
-      }
       return res.status(200).send(html);
     }
 
@@ -289,7 +214,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path === "/" || path === "/index.html") {
       const page = Number(url.searchParams.get("page") || "1");
       const r = await renderIndex(env as any, page);
-      return await sendFetchResponse(req, res, await withNoStore(await withSiteJs(r)));
+      return await sendFetchResponse(res, await withNoStore(await withSiteJs(r)));
     }
     if (path === "/rss.xml") {
       const base = (env.SITE_URL && env.SITE_URL.replace(/\/+$/, "")) || `${proto}://${req.headers.host}`;
@@ -300,20 +225,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: r.status,
           headers: { "content-type": "application/rss+xml; charset=utf-8" },
         });
-        return await sendFetchResponse(req, res, rr);
+        return await sendFetchResponse(res, rr);
       }
-      return await sendFetchResponse(req, res, r);
+      return await sendFetchResponse(res, r);
     }
     const mPost = path.match(/^\/post\/([^/]+)\/?$/);
     if (mPost) {
       const r = await renderPost(env as any, decodeURIComponent(mPost[1]!), url.searchParams);
-      return await sendFetchResponse(req, res, await withNoStore(await withSiteJs(r)));
+      return await sendFetchResponse(res, await withNoStore(await withSiteJs(r)));
     }
     const mTag = path.match(/^\/tag\/([^/]+)\/?$/);
     if (mTag) {
       const page = Number(url.searchParams.get("page") || "1");
       const r = await renderTag(env as any, decodeURIComponent(mTag[1]!), page);
-      return await sendFetchResponse(req, res, await withNoStore(await withSiteJs(r)));
+      return await sendFetchResponse(res, await withNoStore(await withSiteJs(r)));
     }
 
     // 6) 단일 세그먼트 페이지(/about 등)
@@ -327,15 +252,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (p !== "/" && single && !looksFile && !isReserved) {
         const slug = decodeURIComponent(p.replace(/^\/|\/$/g, ""));
         const r = await renderPage(env as any, slug, url.searchParams);
-        return await sendFetchResponse(req, res, await withNoStore(await withSiteJs(r)));
+        return await sendFetchResponse(res, await withNoStore(await withSiteJs(r)));
       }
     }
 
     // 7) 404
-    harden(res, req);
+    setSecurityHeadersVercel(res);
     return res.status(404).send("Not found");
   } catch (e: any) {
-    harden(res, req);
+    setSecurityHeadersVercel(res);
     res.setHeader("content-type", "text/plain; charset=utf-8");
     return res.status(500).send(`Internal Error: ${e?.message || String(e)}`);
   }

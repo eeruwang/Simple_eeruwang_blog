@@ -7,9 +7,6 @@ import { processBib } from "../lib/bibtex/bibtex.js";
 import { renderBannerRail } from "../lib/render/banners.js";
 import { mdToHtml, mdToSafeHtml } from "../lib/markdown.js"; // ← 서버 렌더러
 
-import { enforceSafeExternalLinks } from "../lib/markdown.js"; // 맨 위 import에 추가
-
-// ...
 
 // 최소 환경 타입 (사용하는 키만)
 type EnvLike = {
@@ -113,7 +110,7 @@ export async function renderPostPage(
   if (!allowDebug) debug = false;
 
   const title = (r.title ?? r.Title ?? "(제목 없음)") as string;
-  const rawMd = (r.body_md ?? (r as any).bodyMd ?? r.Body_md ?? r.Body ?? "") as string;
+  const rawMd = (r.body_md ?? r.Body_md ?? r.Body ?? "") as string;
   const date = (r.published_at ?? r.Published_at ?? "") as string;
   const dateStr = date ? new Date(date).toLocaleDateString("en-GB") : "";
   const coverSrc = (r.cover_url ?? r.Cover_url ?? r.cover ?? r.Cover) as string | undefined;
@@ -181,27 +178,13 @@ export async function renderPostPage(
   }
 
   // 🔁 한 줄 교체 핵심: 각주 치환 → 서버에서 마크다운 → HTML(+sanitize)
-  // ✅ MD가 우선, 없으면 서버가 준 HTML을 그대로 사용 (body_html/bodyHtml/content)
-  const rawHtmlFromRec =
-    (r as any).body_html ?? (r as any).bodyHtml ?? (r as any).content ?? "";
-
   const { md: mdWithFoot, footer } = applyFootnotes(mdFinal);
-
-  // 1) MD → 안전한 HTML
-  const htmlFromMd = mdToSafeHtml(mdWithFoot);
-
-  // 2) 우선순위: MD가 있으면 MD 사용, 없으면 이미-HTML 사용
-  const core = (rawMd && rawMd.trim())
-    ? htmlFromMd
-    : String(rawHtmlFromRec || "");
-
-  // 3) 외부 링크 보강은 try/catch로 감싸 안전하게
-  let contentHtml = core + (footer || "") + '<!-- __BIB_HERE__ -->' + (bibHtml || "") + (bibDebug || "");
-  try {
-    contentHtml = enforceSafeExternalLinks(contentHtml);
-  } catch {
-    /* 보강 중 오류가 나도 본문은 그대로 보여준다 */
-  }
+  const contentHtml =
+    mdToSafeHtml(mdWithFoot) +
+    (footer || "") +                 // 풋노트 먼저
+    '<!-- __BIB_HERE__ -->' +        // ← 전환 컨테이너(#content) 안쪽 앵커
+    (bibHtml || "") +                // 이미 만들어진 경우는 그대로 붙음
+    (bibDebug || "");
   // 클라이언트용 스크립트는 최소화(뒤로가기만 유지). marked CDN 제거!
   const headExtra = `
     <script src="/assets/press.js" defer></script>
@@ -222,7 +205,16 @@ export async function renderPostPage(
 </article>
 
 ${bannersHtml}
-`;
+
+<script>
+  (function () {
+    var a = document.querySelector('[data-back]');
+    if (!a) return;
+    a.addEventListener('click', function (e) {
+      if (history.length > 1) { e.preventDefault(); history.back(); }
+    }, { passive: false });
+  })();
+</script>`;
 
   return new Response(pageHtml({ title, body, headExtra }, env as any), {
     headers: { "content-type": "text/html; charset=utf-8" },

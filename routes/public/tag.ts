@@ -6,7 +6,7 @@
 import { pageHtml } from "../../lib/render/render.js";
 import { escapeAttr, escapeHtml } from "../../lib/util.js";
 import { getTags, tagsHtml } from "../../lib/render/tags.js";
-import { renderTagBar, getConfiguredTags } from "../../lib/render/tags-ui.js";
+import { renderTagBar, getConfiguredTags, TAG_SCRIPT } from "../../lib/render/tags-ui.js";
 import { renderBannerRail } from "../../lib/render/banners.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 import { listByTag, type PostRow, asArrayRows } from "../../lib/db/db.js";
@@ -72,6 +72,7 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
         <div id="post-list">${items || "<p>글이 없습니다.</p>"}</div>
         ${pager}
         ${bannerRailHtml}
+        <script>${TAG_SCRIPT}</script>
       `,
     },
     env as any

@@ -1,20 +1,7 @@
 {
   "version": 2,
   "routes": [
-    {
-      "src": "/assets/(.*)",
-      "headers": {
-        "Cache-Control": "public, max-age=31536000, immutable",
-        "Cross-Origin-Resource-Policy": "same-origin"
-      },
-      "continue": true
-    },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/api/[[...all]]?path=$1" }
-  ],
-  "functions": {
-    "api/[[...all]].ts": {
-      "includeFiles": "lib/pages/editor/**"
-    }
-  }
+  ]
 }

@@ -1,125 +1,143 @@
-// routes/public/page.ts
-// 단일 페이지(/:slug)도 포스트와 동일하게 SSR로 본문을 주입
+/* ───────── 페이지 라우트 (API 경유 버전) ─────────
+ * - /:slug 에서 is_page=true인 레코드를 공개 API로 조회
+ * - published=true만 기본 허용( ?preview=1 이면 초안 허용)
+ * - views/pageview.js 의 renderPostPage 로 렌더
+ * - post.ts 와 동일한 SEO/메타 주입 흐름으로 통일
+ */
 
-import { renderPostPage as renderPageView } from "../../views/pageview.js";
+import { renderPostPage } from "../../views/pageview.js";
 import { seoTags } from "../../lib/seo.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
-import { mdToHtml } from "../../lib/markdown.js";
+
+// ★ 추가
+import { createDb } from "../../lib/api/editor.js";
+import { resolveBibtexConfig } from "../../lib/bibtex/config.js";
+import { processBib } from "../../lib/bibtex/bibtex.js";
+import { withBibliography } from "../../lib/util.js";  // ← 여기!
+
 
 type Env = {
   SITE_URL?: string;
   SITE_NAME?: string;
-  EDITOR_PASSWORD?: string;
   [k: string]: unknown;
 };
 
-type ApiPage = {
+type ApiPost = {
   id: number;
   slug: string;
   title: string;
-  excerpt?: string | null;
+  body_md?: string;
   tags?: string[];
+  excerpt?: string | null;
   is_page?: boolean;
   published?: boolean;
   published_at?: string | null;
   cover_url?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  body_md?: string | null;     // ← 본문(MD)
-  body_html?: string | null;   // ← 캐시/옵션
 };
 
-function baseUrl(env: Env): string {
-  const raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
-  if (raw) return (/^https?:\/\//i.test(raw) ? raw : "https://" + raw).replace(/\/+$/, "");
-  const vurl = (globalThis as any).process?.env?.VERCEL_URL;
-  return vurl ? `https://${String(vurl).replace(/\/+$/, "")}` : "";
-}
+const toBool = (v: unknown) =>
+  v === true || v === 1 || v === "1" || v === "t" || v === "true";
 
-// routes/public/page.ts — fetchPublicPageBySlug 교체
-async function fetchPublicPageBySlug(env: Env, slug: string): Promise<ApiPage | null> {
-  const base = baseUrl(env);
-  const headers: Record<string,string> = { "cache-control":"no-store" };
-  const tok = String((env as any).EDITOR_PASSWORD || "").trim();
-  if (tok) headers["x-editor-token"] = tok;
-
-  // 1) slug로 얕은 레코드
-  const r = await fetch(`${base}/api/posts?slug=${encodeURIComponent(slug)}`, { headers });
-  if (!r.ok) return null;
-  const j = await r.json().catch(()=>null);
-  let item = j?.item as ApiPage | undefined;
-  if (!item) return null;
-  if (item.is_page !== true || item.published !== true) return null;
-
-  // 2) 본문이 없으면 id로 단건 재조회(본문 포함)
-  const hasBody = typeof (item as any).body_md === "string" || typeof (item as any).bodyMd === "string";
-  if (!hasBody && item.id) {
-    const r2 = await fetch(`${base}/api/posts/${item.id}`, { headers });
-    if (r2.ok) {
-      const j2 = await r2.json().catch(()=>null);
-      const full = (j2?.item || j2?.record || j2) as any;
-      if (full) item = { ...item, body_md: full.body_md ?? full.bodyMd ?? null, body_html: full.body_html ?? full.bodyHtml ?? null };
-    }
-  }
-  return item;
-}
-
-
-// <head>에 SEO 태그 삽입
+/** HTML Response의 </head> 직전에 headExtra를 주입 */
 async function withSeoHead(resp: Response, headExtra: string): Promise<Response> {
   const ct = resp.headers.get("content-type") || "";
   if (!/text\/html/i.test(ct)) return resp;
   const html = await resp.text();
-  const patched = html.includes("</head>")
-    ? html.replace("</head>", `${headExtra}\n</head>`)
-    : html;
+  if (!html.includes("</head>")) {
+    return new Response(html, { status: resp.status, headers: resp.headers });
+  }
+  const patched = html.replace("</head>", `${headExtra}\n</head>`);
   const h = new Headers(resp.headers);
   if (!h.get("content-type")) h.set("content-type", "text/html; charset=utf-8");
   return new Response(patched, { status: resp.status, headers: h });
 }
 
-// 서버 렌더된 틀(#content)에 본문 HTML 꽂기
-async function withContentHTML(resp: Response, bodyHtml: string): Promise<Response> {
-  const ct = resp.headers.get("content-type") || "";
-  if (!/text\/html/i.test(ct)) return resp;
-  const src = await resp.text();
-
-  const tagRx = /<div\b[^>]*\bid\s*=\s*["']content["'][^>]*>/i;
-  if (!tagRx.test(src)) return resp;               // 틀에 #content가 없다면 원본 반환
-  const out = src.replace(tagRx, (m) => m + (bodyHtml || ""));  // 오픈 태그 직후에 꽂기
-
-  const h = new Headers(resp.headers);
-  if (!h.get("content-type")) h.set("content-type", "text/html; charset=utf-8");
-  return new Response(out, { status: resp.status, headers: h });
+function baseUrl(env: Env): string {
+  let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
+  if (raw) {
+    if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
+    return raw.replace(/\/+$/, "");
+  }
+  const vurl = (globalThis as any).process?.env?.VERCEL_URL;
+  if (vurl) return `https://${String(vurl).replace(/\/+$/, "")}`;
+  return "http://localhost:3000";
 }
 
+async function fetchPublicPageBySlug(
+  env: Env,
+  slug: string,
+  includeDraft?: boolean
+): Promise<ApiPost | null> {
+  const base = baseUrl(env);
+  const qs = new URLSearchParams({ slug });
+  if (includeDraft) qs.set("draft", "1"); // 공개 API가 지원한다면 사용
+  const url = `${base}/api/posts?${qs.toString()}`;
+  const res = await fetch(url, { headers: { "cache-control": "no-store" } });
+  if (!res.ok) return null;
+  const j = await res.json();
+  const item: ApiPost | undefined = j?.item;
+  if (!item) return null;
 
-export async function renderPage(env: Env, slug: string, searchParams?: URLSearchParams): Promise<Response> {
+  // 페이지 전용 필터
+  if (item.is_page !== true) return null;
+  if (!includeDraft && item.published !== true) return null;
+  return item;
+}
+
+export async function renderPage(
+  env: Env,
+  slug: string,
+  searchParams?: URLSearchParams
+): Promise<Response> {
   const s = String(slug || "").trim();
   if (!s) return new Response("Not found", { status: 404 });
 
-  const rec = await fetchPublicPageBySlug(env, s);
+  const debug = !!searchParams?.get?.("debug");
+  const includeDraft =
+    searchParams?.get?.("draft") === "1" ||
+    searchParams?.get?.("preview") === "1" ||
+    searchParams?.get?.("debug") === "1";
+
+  // 공개 API 경유로 통일
+  const rec = await fetchPublicPageBySlug(env, s, includeDraft);
   if (!rec) return new Response("Not found", { status: 404 });
 
+  // ── BibTeX: env → DB 순으로 URL 해석 → 인용 치환 + 참고문헌 생성
+    // ── BibTeX: 1회만 처리
+  let bibliographyHtml = "";
+  try {
+    const db = createDb(env as any);
+    const { url: bibUrl, style } = await resolveBibtexConfig(env as any, db);
+    if (bibUrl) {
+      const { content, bibliographyHtml: bibHtml } = await processBib(
+        rec.body_md || "",
+        bibUrl,
+        { style: style || "harvard", usageHelp: true, ibid: true }
+      );
+      rec.body_md = content;
+      bibliographyHtml = bibHtml;
+    }
+  } catch (e) {
+    console.warn("[post] bibtex process skipped:", e);
+  }
+
+
+  // SEO/OG 메타 주입(페이지는 website 타입이 일반적)
   const site = baseUrl(env);
   const desc = rec.excerpt || deriveExcerptFromRecord(rec as any, 160) || "";
-
   const headExtra = seoTags({
     siteUrl: site,
     path: `/${encodeURIComponent(rec.slug)}`,
     title: rec.title || rec.slug || "Untitled",
     description: desc,
     imageUrl: rec.cover_url || undefined,
-    type: "article",
+    type: "website",
   });
 
-  const debug = !!searchParams?.get?.("debug");
-  const shell = await renderPageView(env, rec as any, debug);
-  const bodyHtml =
-    typeof (rec as any).body_html === "string" && (rec as any).body_html.trim()
-      ? (rec as any).body_html!
-      : mdToHtml(rec.body_md || "");
-
-  const withBody = await withContentHTML(shell, bodyHtml);
-  return await withSeoHead(withBody, headExtra);
+  // 렌더 → 참고문헌 주입 → SEO
+  const r0 = await renderPostPage(env, rec as any, debug);
+  const r1 = await withBibliography(r0, bibliographyHtml);
+  return await withSeoHead(r1, headExtra);
 }

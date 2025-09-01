@@ -7,7 +7,7 @@
 import { pageHtml } from "../../lib/render/render.js";
 import { escapeAttr, escapeHtml } from "../../lib/util.js";
 import { getTags, tagsHtml } from "../../lib/render/tags.js";
-import { renderTagBar, getConfiguredTags } from "../../lib/render/tags-ui.js";
+import { renderTagBar, getConfiguredTags, TAG_SCRIPT } from "../../lib/render/tags-ui.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 import { renderBannerRail } from "../../lib/render/banners.js";
 
@@ -134,6 +134,7 @@ export async function renderIndex(env: Env, page: number = 1): Promise<Response>
         <div id="post-list">${itemsHtml || "<p>글이 없습니다.</p>"}</div>
         ${pager}
         ${bannerRailHtml}
+        <script>${TAG_SCRIPT}</script>
       `,
     },
     env as any
