@@ -386,6 +386,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 3) 에디터 API 라우트 (/api/…)
     if (path.startsWith("/api/")) {
       const publicOk = isPublicApiGet(req, url); // 🔑 공개 GET이면 인증 생략
+
+      // ✅ 공개 슬러그/ID 단건은 여기서 바로 DB 조회해 본문까지 포함해 반환
+      if (req.method === "GET" && path === "/api/posts") {
+        const slug = (url.searchParams.get("slug") || "").trim();
+        const id   = (url.searchParams.get("id") || "").trim();
+
+        if (slug || id) {
+          try {
+            const db = await createDb(env as any);
+
+            let row: any = null;
+            if (slug) {
+              const { rows } = await db.query(
+                `select id, slug, title, excerpt, tags, is_page, published, published_at,
+                        cover_url, created_at, updated_at, body_md, body_html
+                  from posts
+                  where slug = $1
+                  limit 1`,
+                [slug]
+              );
+              row = rows?.[0] || null;
+            } else {
+              const idNum = Number(id) || 0;
+              const { rows } = await db.query(
+                `select id, slug, title, excerpt, tags, is_page, published, published_at,
+                        cover_url, created_at, updated_at, body_md, body_html
+                  from posts
+                  where id = $1
+                  limit 1`,
+                [idNum]
+              );
+              row = rows?.[0] || null;
+            }
+
+            if (!row || row.published !== true) {
+              applyEditorCors(req, res, env);
+              harden(res, req);
+              return res.status(404).json({ ok: false, error: "Not found" });
+            }
+
+            applyEditorCors(req, res, env);
+            harden(res, req);
+            return res.status(200).json({ ok: true, item: row });
+          } catch (e: any) {
+            applyEditorCors(req, res, env);
+            harden(res, req);
+            return res.status(500).json({ ok: false, error: String(e?.message || e) });
+          }
+        }
+      }
+
       if (!publicOk) {
         const tok = getEditorTokenFromHeaders(req);
         if (!tok || tok !== (env.EDITOR_PASSWORD || "").trim()) {
@@ -409,18 +460,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else if (typeof req.body === "string") {
           bodyInit = req.body;
         } else if (req.body == null) {
-          // ⬇⬇ JSON 바디가 req.body에 없을 때 스트림에서 직접 읽기
           const chunks: Buffer[] = [];
           for await (const chunk of req as any) {
             chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
           }
           if (chunks.length) {
             bodyInit = Buffer.concat(chunks);
-            // content-type이 비어 있으면 JSON으로 가정
             if (!headers.has("content-type")) headers.set("content-type", "application/json");
           }
         } else {
-          // 객체로 파싱돼 온 경우
           if (!headers.has("content-type")) headers.set("content-type", "application/json");
           bodyInit = JSON.stringify(req.body);
         }
@@ -431,6 +479,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       applyEditorCors(req, res, env);
       return await sendFetchResponse(req, res, r);
     }
+
 
     // 4) 에디터 HTML
     if (path === "/editor" && req.method === "GET") {
