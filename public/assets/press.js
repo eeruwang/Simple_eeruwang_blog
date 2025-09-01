@@ -47,20 +47,22 @@
       if (!r.ok) return;
       const j = await r.json().catch(() => null);
       const item = j && (j.item || j.record || j.fields || j);
-      const md = item && (item.body_md || item.bodyMd || item.content || "");
+      const htmlFromApi = item && (item.body_html || item.bodyHtml || item.html || "");
+      const mdFromApi   = item && (item.body_md   || item.bodyMd   || item.content || "");
 
-      // marked가 있으면 사용, 아니면 tinyMd 사용
       let html = "";
-      if (window.marked && typeof window.marked.parse === "function") {
-        window.marked.setOptions && window.marked.setOptions({ mangle: false, headerIds: false });
-        html = window.marked.parse(md || "");
+      if (htmlFromApi && /\S/.test(htmlFromApi)) {
+        html = htmlFromApi;                 // ✅ API가 HTML로 주면 그대로 사용
+      } else if (mdFromApi && /\S/.test(mdFromApi)) {
+        if (window.marked && typeof window.marked.parse === "function") {
+          window.marked.setOptions && window.marked.setOptions({ mangle: false, headerIds: false });
+          html = window.marked.parse(mdFromApi);
+        } else {
+          html = tinyMd(mdFromApi);
+        }
       } else {
-        html = tinyMd(md || "");
+        return;                             // 둘 다 없으면 그때만 포기
       }
-
-      // 본문 주입
-      // md가 비면 아무 것도 하지 않음
-      if (!md || /^\s*$/.test(md)) return;
       // 서버가 이미 본문을 렌더해둔 경우(초기 SSR) 덮어쓰지 않음
       if (wrap && wrap.innerHTML && !/^\s*$/.test(wrap.innerHTML)) return;
       // 정말 비어 있을 때에만 주입
