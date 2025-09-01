@@ -385,11 +385,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 3) 에디터 API 라우트 (/api/…)
     if (path.startsWith("/api/")) {
+      const publicOk = isPublicApiGet(req, url); // GET /api/posts, /api/diag-db
       const editorTok = getEditorTokenFromHeaders(req);
       const tokValid  = !!editorTok && editorTok === (env.EDITOR_PASSWORD || "").trim();
 
-      // ✅ slug/id 단건은 토큰 유무와 무관하게 여기서 직접 응답
-      if (req.method === "GET" && path === "/api/posts") {
+      // ✅ 공개 슬러그/ID 단건: 오직 "토큰이 없을 때만" 여기서 직접 응답
+      if (!tokValid && req.method === "GET" && path === "/api/posts") {
         const slug = (url.searchParams.get("slug") || "").trim();
         const id   = (url.searchParams.get("id") || "").trim();
 
@@ -407,14 +408,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const { rows } = await db.query(q, [arg]);
             const row = rows?.[0] || null;
 
-            // 공개 요청(토큰 없음)일 때만 공개글로 제한
-            if (!tokValid && (!row || row.published !== true)) {
-              applyEditorCors(req, res, env);
-              harden(res, req);
-              return res.status(404).json({ ok: false, error: "Not found" });
-            }
-
-            if (!row) {
+            // 공개 요청은 공개 글만 허용
+            if (!row || row.published !== true) {
               applyEditorCors(req, res, env);
               harden(res, req);
               return res.status(404).json({ ok: false, error: "Not found" });
@@ -431,8 +426,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      // 🔐 나머지 /api/* 는 기존 인증 로직 유지
-      const publicOk = isPublicApiGet(req, url);
+      // 🔐 토큰 필요한 요청은 기존처럼 인증 체크
       if (!publicOk) {
         if (!tokValid) {
           applyEditorCors(req, res, env);
@@ -441,9 +435,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      // … 이하 기존 handleEditorApi 위임부 그대로 …
-    }
+      // 나머지는 기존 핸들러로 위임
+      const headers = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (Array.isArray(v)) headers.set(k, v.join(", "));
+        else if (typeof v === "string") headers.set(k, v);
+      }
 
+      let bodyInit: BodyInit | undefined;
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        if (Buffer.isBuffer(req.body)) {
+          bodyInit = new Uint8Array(req.body);
+        } else if (typeof req.body === "string") {
+          bodyInit = req.body;
+        } else if (req.body == null) {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req as any) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          if (chunks.length) {
+            bodyInit = Buffer.concat(chunks);
+            if (!headers.has("content-type")) headers.set("content-type", "application/json");
+          }
+        } else {
+          if (!headers.has("content-type")) headers.set("content-type", "application/json");
+          bodyInit = JSON.stringify(req.body);
+        }
+      }
+
+      const webReq = new Request(url.toString(), { method: req.method, headers, body: bodyInit });
+      const r = await handleEditorApi(webReq, env);
+      applyEditorCors(req, res, env);
+      return await sendFetchResponse(req, res, r);
+    }
 
 
 
