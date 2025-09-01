@@ -59,6 +59,11 @@
       }
 
       // 본문 주입
+      // md가 비면 아무 것도 하지 않음
+      if (!md || /^\s*$/.test(md)) return;
+      // 서버가 이미 본문을 렌더해둔 경우(초기 SSR) 덮어쓰지 않음
+      if (wrap && wrap.innerHTML && !/^\s*$/.test(wrap.innerHTML)) return;
+      // 정말 비어 있을 때에만 주입
       wrap.innerHTML = html;
 
       // 뒤로가기 링크(data-back) 처리(외부 파일에서 이벤트 등록)
