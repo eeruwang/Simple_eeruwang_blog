@@ -27,6 +27,21 @@ function json(data: any, status = 200): Response {
     headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
+// 요청 바디를 안전하게 JSON으로 읽기
+// - content-type이 애매하거나, Vercel 프록시에서 바디가 버퍼/텍스트로 들어와도 복구
+async function readJsonSafe(req: Request): Promise<any> {
+  try {
+    return await req.json();
+  } catch {
+    try {
+      const t = await req.text();
+      return t ? JSON.parse(t) : {};
+    } catch {
+      return {};
+    }
+  }
+}
+
 
 function isMissingTableError(e: unknown): boolean {
   const msg = String((e as any)?.message ?? e ?? "");
@@ -162,7 +177,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     }
 
     if (request.method === "PUT") {
-      const body = await request.json().catch(() => ({}));
+      const body = await readJsonSafe(request);
       const key = String(body?.key || "").trim();
       const val = String(body?.value ?? "");
       if (!key) return json({ error: "key required" }, 400);
@@ -174,7 +189,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
   // ── 미리보기: POST /api/posts/preview
   if (pathname === "/api/posts/preview" && request.method === "POST") {
     if (!isEditor) return json({ error: "unauthorized" }, 401);
-    const body = await request.json().catch(() => ({}));
+    const body = await readJsonSafe(request);
     const md = String(body?.md ?? body?.text ?? "");
 
     // ⬇ BibTeX 처리(환경변수 → DB 설정)
@@ -226,7 +241,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         contentType = file.type || "text/plain";
         bodyForPut = file; // Blob
       } else {
-        const body = await request.json().catch(() => ({}));
+        const body = await readJsonSafe(request);
         const raw = String(body?.data || "");
         filename = String(body?.name || filename);
         contentType = String(body?.contentType || contentType);
@@ -381,7 +396,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
   if (request.method === "POST" && postsRoot) {
     if (!isEditor) return json({ error: "unauthorized" }, 401);
 
-    const body = await request.json().catch(() => ({}));
+    const body = await readJsonSafe(request);
     const inputs = Array.isArray(body) ? body : [body];
 
     const createWithTx = async (): Promise<any[]> => {
@@ -446,7 +461,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     if (!m) return json({ error: "bad request" }, 400);
     const id = Number(m[1]);
 
-    const body = await request.json().catch(() => ({}));
+    const body = await readJsonSafe(request);
 
     try {
       const updated = await db.tx(async ({ query }) => {

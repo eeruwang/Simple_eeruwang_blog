@@ -134,8 +134,12 @@ async function fetchPublicPostBySlug(env: Env, slug: string): Promise<ApiPost | 
   const base = baseUrl(env);
   const url = `${base}/api/posts?slug=${encodeURIComponent(slug)}`;
   const headers: Record<string, string> = { "cache-control": "no-store" };
-  const tok = String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim();
-  if (tok) headers["x-editor-token"] = tok;            // ★ 인증 헤더
+  const isPreview = searchParams?.get?.("preview") === "1";
+  const tok = isPreview
+    ? String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim()
+    : "";
+  if (tok) headers["x-editor-token"] = tok;
+
 
   const res = await fetch(url, { headers });
   if (!res.ok) return null;
