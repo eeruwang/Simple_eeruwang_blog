@@ -369,11 +369,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         else if (typeof v === "string") headers.set(k, v);
       }
       let bodyInit: BodyInit | undefined;
-      if (req.method === "POST") {
+      const needsBody = /^(POST|PUT|PATCH)$/i.test(req.method || "");
+
+      if (needsBody) {
         if (Buffer.isBuffer(req.body)) bodyInit = new Uint8Array(req.body);
         else if (typeof req.body === "string") bodyInit = req.body;
         else if (req.body != null) {
-          if (!headers.has("content-type")) headers.set("content-type", "application/json");
+          if (!headers.has("content-type")) {
+            headers.set("content-type", "application/json; charset=utf-8");
+          }
           bodyInit = JSON.stringify(req.body);
         }
       }
