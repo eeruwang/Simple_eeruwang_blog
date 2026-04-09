@@ -81,7 +81,7 @@ export function pageHtml(
     <h1><a href="/" style="text-decoration:none;color:inherit">${escapeHtml(siteName)}</a></h1>
 ${showIntro ? `
     <div class="site-intro">
-      <p>개인용 블로그 &middot; 노트 엔진입니다. 마크다운 기반의 경량 블로그로, 글 작성과 게시를 위한 최소 에디터가 포함되어 있습니다. BibTeX 인용, 각주, 태그, RSS를 지원합니다.</p>
+      <p>We explore the concept of atmosphere grounded in neo-phenomenology, understanding and examining how the sensory dimensions derived from it unfold within the moving image and its exhibition environment. Welcome to our blog!</p>
       <p class="site-inspired">This blog is inspired by <a href="https://alignment.anthropic.com/">Anthropic's Alignment Science Blog</a>.</p>
     </div>
 ` : ""}
