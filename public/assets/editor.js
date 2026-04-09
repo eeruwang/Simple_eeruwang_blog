@@ -397,42 +397,129 @@ export async function initEditor() {
     }
   }
 
-  /* ───────────────── Transcript 삽입 메뉴 ───────────────── */
+  /* ───────────────── Transcript 빌더 팝업 ───────────────── */
   function bindTranscriptInsert() {
     var btn = document.getElementById("transcriptBtn");
-    var menu = document.getElementById("transcriptMenu");
-    if (!btn || !menu) return;
+    if (!btn) return;
 
-    // 토글
+    var TYPES = [
+      { value: "agent:thought",           label: "Agent: Thought",        icon: "\ud83d\udcad" },
+      { value: "agent:send_message",      label: "Agent: Message",        icon: "\ud83d\udcac" },
+      { value: "agent:tool_call",         label: "Agent: Tool call",      icon: "\ud83d\udd27" },
+      { value: "agent:bash_tool",         label: "Agent: Bash",           icon: "\ud83d\udd27" },
+      { value: "agent:code_write",        label: "Agent: Code",           icon: "\ud83d\udcbb" },
+      { value: "result:chat_output",      label: "Result: Chat output",   icon: "\ud83e\udd16" },
+      { value: "result:thinking",         label: "Result: Thinking",      icon: "\ud83d\udcad" },
+      { value: "result:bash_output",      label: "Result: Bash output",   icon: "\ud83d\udce4" },
+      { value: "summary:finding",         label: "Summary: Finding",      icon: "\ud83d\udd0d" },
+      { value: "summary:critical_finding",label: "Summary: Critical",     icon: "\u26a0\ufe0f" },
+    ];
+
     btn.addEventListener("click", function (e) {
       e.preventDefault();
-      e.stopPropagation();
-      menu.style.display = menu.style.display === "none" ? "flex" : "none";
-    });
 
-    // 바깥 클릭 시 닫기
-    document.addEventListener("click", function () { menu.style.display = "none"; });
-    menu.addEventListener("click", function (e) { e.stopPropagation(); });
+      // 이미 열려있으면 무시
+      if (document.getElementById("tv-builder-overlay")) return;
 
-    // 메뉴 항목 클릭
-    menu.querySelectorAll("button[data-action]").forEach(function (item) {
-      item.addEventListener("click", function () {
-        var action = item.dataset.action;
-        var text = "";
+      // 오버레이
+      var overlay = document.createElement("div");
+      overlay.id = "tv-builder-overlay";
+      overlay.className = "tv-builder-overlay";
 
-        if (action === "new-block") {
-          var title = prompt("Transcript 제목을 입력하세요:", "Transcript");
-          if (!title) return;
-          text = '\n:::transcript "' + title + '"\n\n> agent:thought\n여기에 내용을 작성하세요...\n\n:::end\n';
-        } else if (action === "end-block") {
-          text = "\n:::end\n";
-        } else {
-          // agent:thought, result:chat_output 등
-          text = "\n> " + action + "\n여기에 내용을 작성하세요...\n";
-        }
+      var panel = document.createElement("div");
+      panel.className = "tv-builder-panel";
 
-        insertMarkdownAtCursor(text);
-        menu.style.display = "none";
+      // 헤더
+      panel.innerHTML =
+        '<div class="tv-builder-header">' +
+          '<h3>Transcript Builder</h3>' +
+          '<button type="button" class="tv-builder-close">\u00d7</button>' +
+        '</div>' +
+        '<div class="tv-builder-body">' +
+          '<div class="tv-builder-field">' +
+            '<label>Title</label>' +
+            '<input type="text" id="tvTitle" placeholder="Transcript title" value="Transcript" />' +
+          '</div>' +
+          '<div id="tvEntries" class="tv-builder-entries"></div>' +
+          '<div class="tv-builder-add-row">' +
+            '<select id="tvTypeSelect"></select>' +
+            '<button type="button" id="tvAddBtn">+ Add entry</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="tv-builder-footer">' +
+          '<button type="button" id="tvCancel">Cancel</button>' +
+          '<button type="button" id="tvInsert" class="tv-btn-primary">Insert into editor</button>' +
+        '</div>';
+
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
+
+      // select 옵션 채우기
+      var sel = document.getElementById("tvTypeSelect");
+      TYPES.forEach(function (t) {
+        var opt = document.createElement("option");
+        opt.value = t.value;
+        opt.textContent = t.icon + " " + t.label;
+        sel.appendChild(opt);
+      });
+
+      // 첫 엔트리 자동 추가
+      addEntry();
+
+      // 엔트리 추가
+      function addEntry(typeVal) {
+        var type = typeVal || sel.value;
+        var info = TYPES.find(function (t) { return t.value === type; }) || TYPES[0];
+        var container = document.getElementById("tvEntries");
+        var idx = container.children.length;
+
+        var row = document.createElement("div");
+        row.className = "tv-entry-row";
+        row.innerHTML =
+          '<div class="tv-entry-header">' +
+            '<span class="tv-entry-badge">' + info.icon + ' ' + info.label + '</span>' +
+            '<button type="button" class="tv-entry-remove" title="Remove">\u00d7</button>' +
+          '</div>' +
+          '<textarea class="tv-entry-text" rows="3" placeholder="Enter content..." data-type="' + type + '"></textarea>';
+
+        container.appendChild(row);
+
+        // 삭제
+        row.querySelector(".tv-entry-remove").addEventListener("click", function () {
+          row.remove();
+        });
+
+        // 새로 추가된 textarea에 포커스
+        var ta = row.querySelector("textarea");
+        setTimeout(function () { ta.focus(); }, 50);
+      }
+
+      document.getElementById("tvAddBtn").addEventListener("click", function () { addEntry(); });
+
+      // 닫기
+      function close() { overlay.remove(); }
+      panel.querySelector(".tv-builder-close").addEventListener("click", close);
+      document.getElementById("tvCancel").addEventListener("click", close);
+      overlay.addEventListener("click", function (ev) { if (ev.target === overlay) close(); });
+
+      // 삽입
+      document.getElementById("tvInsert").addEventListener("click", function () {
+        var title = document.getElementById("tvTitle").value.trim() || "Transcript";
+        var textareas = document.querySelectorAll("#tvEntries .tv-entry-text");
+        if (!textareas.length) { close(); return; }
+
+        var md = '\n:::transcript "' + title + '"\n';
+        textareas.forEach(function (ta) {
+          var type = ta.dataset.type;
+          var content = ta.value.trim();
+          if (content) {
+            md += "\n> " + type + "\n" + content + "\n";
+          }
+        });
+        md += "\n:::end\n";
+
+        insertMarkdownAtCursor(md);
+        close();
       });
     });
   }
