@@ -37,24 +37,18 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
     .map((r) => {
       const slug = (r.slug || "").trim();
       const title = r.title || "(제목 없음)";
-      const dateIso = r.published_at || r.created_at || null;
-      const dateStr = dateIso
-        ? new Date(dateIso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-        : "";
       const excerpt = (r.excerpt || deriveExcerptFromRecord(r as any, 160) || "").trim();
       const dataTags = getTags(r).map((x) => String(x).trim()).filter(Boolean).join(",");
 
-      return `<article class="post-card" data-tags="${escapeAttr(dataTags)}">
-        <div class="post-card-date">${escapeHtml(dateStr)}</div>
-        <h3 class="post-card-title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h3>
-        ${excerpt ? `<p class="post-card-desc">${escapeHtml(excerpt)}</p>` : ""}
-      </article>`;
+      return `<a href="/post/${encodeURIComponent(slug)}" class="note" data-tags="${escapeAttr(dataTags)}">
+        <h3>${escapeHtml(title)}</h3>${excerpt ? `<p class="description">${escapeHtml(excerpt)}</p>` : ""}
+      </a>`;
     })
     .join("");
 
   const pager = `<nav class="pager">
-    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}" class="pager-link">&larr; Previous</a>` : ""}
-    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}" class="pager-link pager-next">Next &rarr;</a>` : ""}
+    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}">&larr; Previous</a>` : ""}
+    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}">Next &rarr;</a>` : ""}
   </nav>`;
 
   const bannerRailHtml = await renderBannerRail({

@@ -74,22 +74,21 @@ export function pageHtml(
   ${headExtra}
 </head>
 <body>
-  <header class="site-header">
-    <a href="/" class="site-logo">${escapeHtml(siteName)}</a>
-    <nav class="site-nav">
-      <a href="/about">About</a>
-      <a href="/rss.xml">RSS</a>
-      <a href="/editor">Editor</a>
-    </nav>
-  </header>
+  <div class="container">
+    <h1><a href="/" style="text-decoration:none;color:inherit">${escapeHtml(siteName)}</a></h1>
 
-  <main id="page">
-    ${body}
-  </main>
+    <div class="info">
+      <p><a href="/about">About</a> &middot; <a href="/rss.xml">RSS</a> &middot; <a href="/editor">Editor</a></p>
+    </div>
 
-  <footer class="site-footer">
-    <span>&copy; ${year} ${escapeHtml(siteName)}</span>
-  </footer>
+    <main id="page">
+      ${body}
+    </main>
+
+    <footer class="site-footer">
+      <p>&copy; ${year} ${escapeHtml(siteName)}</p>
+    </footer>
+  </div>
 
   <script src="/assets/transition.js" defer></script>
 </body>

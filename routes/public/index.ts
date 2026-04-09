@@ -86,23 +86,19 @@ async function fetchPublicPosts(env: Env, page = 1, perPage = 10) {
   return { items: pageSlice, hasNext };
 }
 
-/** 포스트를 연도별로 그룹핑 */
-function groupByYear(posts: ApiPost[]): Map<string, ApiPost[]> {
+/** 포스트를 월+연도별로 그룹핑 ("MARCH 2026") */
+function groupByMonth(posts: ApiPost[]): Map<string, ApiPost[]> {
   const groups = new Map<string, ApiPost[]>();
   for (const p of posts) {
     const dateIso = p.published_at || p.updated_at || p.created_at || null;
-    const yr = dateIso ? new Date(dateIso).getFullYear().toString() : "Unknown";
-    if (!groups.has(yr)) groups.set(yr, []);
-    groups.get(yr)!.push(p);
+    const d = dateIso ? new Date(dateIso) : null;
+    const key = d
+      ? d.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase()
+      : "UNKNOWN";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(p);
   }
   return groups;
-}
-
-/** 날짜를 "Month Day" 형식으로 */
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export async function renderIndex(env: Env, page: number = 1): Promise<Response> {
@@ -110,39 +106,31 @@ export async function renderIndex(env: Env, page: number = 1): Promise<Response>
 
   const { items: list, hasNext } = await fetchPublicPosts(env, page, perPage);
   const tagButtons = getConfiguredTags(env);
-  const siteName = env.SITE_NAME || "Alignment Science";
 
-  // 연도별 그룹핑
-  const yearGroups = groupByYear(list);
+  // 월별 그룹핑
+  const monthGroups = groupByMonth(list);
 
   let itemsHtml = "";
-  for (const [year, posts] of yearGroups) {
-    itemsHtml += `<section class="year-group">
-      <h2 class="year-label">${escapeHtml(year)}</h2>
-      <div class="year-posts">`;
+  let first = true;
+  for (const [monthLabel, posts] of monthGroups) {
+    itemsHtml += `<div class="date${first ? " first-child" : ""}">${escapeHtml(monthLabel)}</div>`;
+    first = false;
 
     for (const r of posts) {
       const slug = (r.slug || "").trim();
       const title = r.title || "(제목 없음)";
-      const dateIso = r.published_at || r.updated_at || r.created_at || null;
-      const dateStr = fmtDate(dateIso);
-      const coverSrc = r.cover_url || "";
       const excerpt = (r.excerpt || deriveExcerptFromRecord(r as any, 160) || "").trim();
       const dataTags = getTags(r as any).map((t) => String(t).trim()).filter(Boolean).join(",");
 
-      itemsHtml += `<article class="post-card" data-tags="${escapeAttr(dataTags)}">
-          <div class="post-card-date">${escapeHtml(dateStr)}</div>
-          <h3 class="post-card-title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h3>
-          ${excerpt ? `<p class="post-card-desc">${escapeHtml(excerpt)}</p>` : ""}
-        </article>`;
+      itemsHtml += `<a href="/post/${encodeURIComponent(slug)}" class="note" data-tags="${escapeAttr(dataTags)}">
+          <h3>${escapeHtml(title)}</h3>${excerpt ? `<p class="description">${escapeHtml(excerpt)}</p>` : ""}
+        </a>`;
     }
-
-    itemsHtml += `</div></section>`;
   }
 
   const pager = `<nav class="pager">
-    ${page > 1 ? `<a href="/?page=${page - 1}" class="pager-link">&larr; Previous</a>` : ""}
-    ${hasNext ? `<a href="/?page=${page + 1}" class="pager-link pager-next">Next &rarr;</a>` : ""}
+    ${page > 1 ? `<a href="/?page=${page - 1}">&larr; Previous</a>` : ""}
+    ${hasNext ? `<a href="/?page=${page + 1}">Next &rarr;</a>` : ""}
   </nav>`;
 
   const bannerRailHtml = await renderBannerRail({
@@ -153,11 +141,11 @@ export async function renderIndex(env: Env, page: number = 1): Promise<Response>
 
   const html = pageHtml(
     {
-      title: siteName,
       headExtra: `<script src="/assets/press.js" defer></script>`,
       body: `
+        <h2>Articles</h2>
         ${renderTagBar("all", tagButtons)}
-        <div id="post-list">${itemsHtml || `<p class="empty-msg">No posts yet.</p>`}</div>
+        <div id="post-list" class="toc">${itemsHtml || "<p>No posts yet.</p>"}</div>
         ${pager}
         ${bannerRailHtml}
         <script>${TAG_SCRIPT}</script>

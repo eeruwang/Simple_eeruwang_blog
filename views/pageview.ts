@@ -192,15 +192,10 @@ export async function renderPostPage(
   `;
 
   const body = `<article class="article-page">
-  <a href="/" data-back class="back-link">&larr; Back to all posts</a>
+  <p class="article-back"><a href="/" data-back>&larr; Back to all posts</a></p>
 
-  <header class="article-hero">
-    <time class="article-date">${dateStr}</time>
-    <h1 class="article-title">${escapeHtml(title)}</h1>
-    <div class="article-tags">${tagsHtml(r as any)}</div>
-  </header>
-
-  <hr class="article-rule">
+  <h1 class="article-title">${escapeHtml(title)}</h1>
+  ${dateStr ? `<p class="article-meta">${dateStr}</p>` : ""}
 
   ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
 
