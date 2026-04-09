@@ -40,6 +40,30 @@
     var tabsContainer = this.container.querySelector(".transcript-tabs");
 
     this.options.transcripts.forEach(function (info) {
+      // 인라인 데이터: script[type="application/transcript-data"] 에서 읽기
+      if (info.inline) {
+        var dataScript = self.container.querySelector('script[type="application/transcript-data"][data-id="' + info.id + '"]');
+        if (dataScript) {
+          try {
+            var data = JSON.parse(dataScript.textContent);
+            var id = info.id;
+            self.transcripts[id] = data;
+
+            var btn = document.createElement("button");
+            btn.className = "transcript-tab";
+            btn.textContent = data.name || "Transcript";
+            btn.onclick = function () { self.selectTranscript(id); };
+            tabsContainer.appendChild(btn);
+
+            if (!self.currentTranscript) self.selectTranscript(id);
+          } catch (e) {
+            console.error("Failed to parse inline transcript:", e);
+          }
+        }
+        return;
+      }
+
+      // URL에서 fetch
       fetch(info.url)
         .then(function (r) {
           if (!r.ok) throw new Error("Failed: " + r.status);
