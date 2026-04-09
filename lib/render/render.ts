@@ -79,14 +79,13 @@ export function pageHtml(
       <a href="/about">About</a> &middot; <a href="/rss.xml">RSS</a> &middot; <a href="/editor">Editor</a>
     </nav>
     <h1><a href="/" style="text-decoration:none;color:inherit">${escapeHtml(siteName)}</a></h1>
-${showIntro ? `
-    <div class="site-intro">
-      <p>I explore the concept of atmosphere grounded in New Phenomenology (Neue Ph&auml;nomenologie), understanding and examining how the sensory dimensions derived from it unfold within the moving image and its exhibition environment.</p>
-      <p class="site-inspired">This blog is inspired by <a href="https://alignment.anthropic.com/">Anthropic's Alignment Science Blog</a>.</p>
-    </div>
-` : ""}
+
     <main id="page">
-      ${body}
+${showIntro ? `      <div class="site-intro">
+        <p>I explore the concept of atmosphere grounded in New Phenomenology (Neue Ph&auml;nomenologie), understanding and examining how the sensory dimensions derived from it unfold within the moving image and its exhibition environment.</p>
+        <p class="site-inspired">This blog is inspired by <a href="https://alignment.anthropic.com/">Anthropic's Alignment Science Blog</a>.</p>
+      </div>
+` : ""}      ${body}
     </main>
 
     <footer class="site-footer">

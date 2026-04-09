@@ -68,6 +68,7 @@ body:not(.editor-page) {
    ================================================================ */
 h1 {
   font-size: 250%;
+  font-weight: 900;
   margin-top: 12px;
   margin-bottom: 0px;
   line-height: 1.15;
