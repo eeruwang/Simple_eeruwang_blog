@@ -74,9 +74,9 @@ export function pageHtml(
   ${headExtra}
 </head>
 <body>
-  <header>
-    <h1><a href="/">${escapeHtml(siteName)}</a></h1>
-    <nav>
+  <header class="site-header">
+    <a href="/" class="site-logo">${escapeHtml(siteName)}</a>
+    <nav class="site-nav">
       <a href="/about">About</a>
       <a href="/rss.xml">RSS</a>
       <a href="/editor">Editor</a>
@@ -87,8 +87,8 @@ export function pageHtml(
     ${body}
   </main>
 
-  <footer>
-    <span>&copy; ${year} ${siteName}</span>
+  <footer class="site-footer">
+    <span>&copy; ${year} ${escapeHtml(siteName)}</span>
   </footer>
 
   <script src="/assets/transition.js" defer></script>

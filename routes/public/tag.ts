@@ -38,24 +38,23 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
       const slug = (r.slug || "").trim();
       const title = r.title || "(제목 없음)";
       const dateIso = r.published_at || r.created_at || null;
-      const dateStr = dateIso ? new Date(dateIso).toLocaleDateString("en-GB") : "";
-      const coverSrc = r.cover_url || "";
+      const dateStr = dateIso
+        ? new Date(dateIso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        : "";
       const excerpt = (r.excerpt || deriveExcerptFromRecord(r as any, 160) || "").trim();
       const dataTags = getTags(r).map((x) => String(x).trim()).filter(Boolean).join(",");
 
-      return `<article class="post" data-tags="${escapeAttr(dataTags)}">
-        ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
-        <div class="meta">${escapeHtml(dateStr)}</div>
-        <h2 class="title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h2>
-        ${excerpt ? `<p class="excerpt">${escapeHtml(excerpt)}</p>` : ""}
-        <div class="tags" style="margin-top:8px">${tagsHtml(r)}</div>
+      return `<article class="post-card" data-tags="${escapeAttr(dataTags)}">
+        <div class="post-card-date">${escapeHtml(dateStr)}</div>
+        <h3 class="post-card-title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h3>
+        ${excerpt ? `<p class="post-card-desc">${escapeHtml(excerpt)}</p>` : ""}
       </article>`;
     })
     .join("");
 
-  const pager = `<nav style="display:flex;gap:20px;margin-top:32px;padding-top:20px;border-top:1px solid var(--line)">
-    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}">&larr; Previous</a>` : ""}
-    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}" style="margin-left:auto">Next &rarr;</a>` : ""}
+  const pager = `<nav class="pager">
+    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}" class="pager-link">&larr; Previous</a>` : ""}
+    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}" class="pager-link pager-next">Next &rarr;</a>` : ""}
   </nav>`;
 
   const bannerRailHtml = await renderBannerRail({

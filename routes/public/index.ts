@@ -86,35 +86,63 @@ async function fetchPublicPosts(env: Env, page = 1, perPage = 10) {
   return { items: pageSlice, hasNext };
 }
 
+/** 포스트를 연도별로 그룹핑 */
+function groupByYear(posts: ApiPost[]): Map<string, ApiPost[]> {
+  const groups = new Map<string, ApiPost[]>();
+  for (const p of posts) {
+    const dateIso = p.published_at || p.updated_at || p.created_at || null;
+    const yr = dateIso ? new Date(dateIso).getFullYear().toString() : "Unknown";
+    if (!groups.has(yr)) groups.set(yr, []);
+    groups.get(yr)!.push(p);
+  }
+  return groups;
+}
+
+/** 날짜를 "Month Day" 형식으로 */
+function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export async function renderIndex(env: Env, page: number = 1): Promise<Response> {
   const perPage = 10;
 
   const { items: list, hasNext } = await fetchPublicPosts(env, page, perPage);
   const tagButtons = getConfiguredTags(env);
+  const siteName = env.SITE_NAME || "Alignment Science";
 
-  const itemsHtml = list
-    .map((r) => {
+  // 연도별 그룹핑
+  const yearGroups = groupByYear(list);
+
+  let itemsHtml = "";
+  for (const [year, posts] of yearGroups) {
+    itemsHtml += `<section class="year-group">
+      <h2 class="year-label">${escapeHtml(year)}</h2>
+      <div class="year-posts">`;
+
+    for (const r of posts) {
       const slug = (r.slug || "").trim();
       const title = r.title || "(제목 없음)";
       const dateIso = r.published_at || r.updated_at || r.created_at || null;
-      const dateStr = dateIso ? new Date(dateIso).toLocaleDateString("en-GB") : "";
+      const dateStr = fmtDate(dateIso);
       const coverSrc = r.cover_url || "";
       const excerpt = (r.excerpt || deriveExcerptFromRecord(r as any, 160) || "").trim();
       const dataTags = getTags(r as any).map((t) => String(t).trim()).filter(Boolean).join(",");
 
-      return `<article class="post" data-tags="${escapeAttr(dataTags)}">
-        ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
-        <div class="meta">${escapeHtml(dateStr)}</div>
-        <h2 class="title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h2>
-        ${excerpt ? `<p class="excerpt">${escapeHtml(excerpt)}</p>` : ""}
-        <div class="tags" style="margin-top:8px">${tagsHtml(r as any)}</div>
-      </article>`;
-    })
-    .join("");
+      itemsHtml += `<article class="post-card" data-tags="${escapeAttr(dataTags)}">
+          <div class="post-card-date">${escapeHtml(dateStr)}</div>
+          <h3 class="post-card-title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h3>
+          ${excerpt ? `<p class="post-card-desc">${escapeHtml(excerpt)}</p>` : ""}
+        </article>`;
+    }
 
-  const pager = `<nav style="display:flex;gap:20px;margin-top:32px;padding-top:20px;border-top:1px solid var(--line)">
-    ${page > 1 ? `<a href="/?page=${page - 1}">&larr; Previous</a>` : ""}
-    ${hasNext ? `<a href="/?page=${page + 1}" style="margin-left:auto">Next &rarr;</a>` : ""}
+    itemsHtml += `</div></section>`;
+  }
+
+  const pager = `<nav class="pager">
+    ${page > 1 ? `<a href="/?page=${page - 1}" class="pager-link">&larr; Previous</a>` : ""}
+    ${hasNext ? `<a href="/?page=${page + 1}" class="pager-link pager-next">Next &rarr;</a>` : ""}
   </nav>`;
 
   const bannerRailHtml = await renderBannerRail({
@@ -125,11 +153,11 @@ export async function renderIndex(env: Env, page: number = 1): Promise<Response>
 
   const html = pageHtml(
     {
-      title: env.SITE_NAME || "이루왕의 잡동사니",
+      title: siteName,
       headExtra: `<script src="/assets/press.js" defer></script>`,
       body: `
         ${renderTagBar("all", tagButtons)}
-        <div id="post-list">${itemsHtml || "<p>글이 없습니다.</p>"}</div>
+        <div id="post-list">${itemsHtml || `<p class="empty-msg">No posts yet.</p>`}</div>
         ${pager}
         ${bannerRailHtml}
         <script>${TAG_SCRIPT}</script>
