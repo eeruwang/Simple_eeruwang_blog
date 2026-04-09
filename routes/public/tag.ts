@@ -45,16 +45,17 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
 
       return `<article class="post" data-tags="${escapeAttr(dataTags)}">
         ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
+        <div class="meta">${escapeHtml(dateStr)}</div>
         <h2 class="title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h2>
-        <div class="row"><div class="meta">${escapeHtml(dateStr)}</div>${tagsHtml(r)}</div>
         ${excerpt ? `<p class="excerpt">${escapeHtml(excerpt)}</p>` : ""}
+        <div class="tags" style="margin-top:8px">${tagsHtml(r)}</div>
       </article>`;
     })
     .join("");
 
-  const pager = `<nav style="display:flex;gap:12px;margin-top:18px">
-    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}">« 이전</a>` : ""}
-    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}">다음 »</a>` : ""}
+  const pager = `<nav style="display:flex;gap:20px;margin-top:32px;padding-top:20px;border-top:1px solid var(--line)">
+    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}">&larr; Previous</a>` : ""}
+    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}" style="margin-left:auto">Next &rarr;</a>` : ""}
   </nav>`;
 
   const bannerRailHtml = await renderBannerRail({

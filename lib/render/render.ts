@@ -68,6 +68,8 @@ export function pageHtml(
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(docTitle)}</title>
   <link rel="alternate" type="application/rss+xml" href="/rss.xml" title="RSS">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/assets/style.css">
   ${headExtra}
 </head>
@@ -85,9 +87,10 @@ export function pageHtml(
     ${body}
   </main>
 
-  <footer>© ${year} ${siteName}. All rights reserved.</footer>
+  <footer>
+    <span>&copy; ${year} ${siteName}</span>
+  </footer>
 
-  <!-- 전환 스크립트는 전역에서 한 번만 -->
   <script src="/assets/transition.js" defer></script>
 </body>
 </html>`;

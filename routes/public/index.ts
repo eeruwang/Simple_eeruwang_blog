@@ -104,19 +104,17 @@ export async function renderIndex(env: Env, page: number = 1): Promise<Response>
 
       return `<article class="post" data-tags="${escapeAttr(dataTags)}">
         ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
-        <div class="title-row list">
-          <h2 class="title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h2>
-          ${tagsHtml(r as any)}
-          <div class="meta" style="margin-left:auto">${escapeHtml(dateStr)}</div>
-        </div>
+        <div class="meta">${escapeHtml(dateStr)}</div>
+        <h2 class="title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h2>
         ${excerpt ? `<p class="excerpt">${escapeHtml(excerpt)}</p>` : ""}
+        <div class="tags" style="margin-top:8px">${tagsHtml(r as any)}</div>
       </article>`;
     })
     .join("");
 
-  const pager = `<nav style="display:flex;gap:12px;margin-top:18px">
-    ${page > 1 ? `<a href="/?page=${page - 1}">« 이전</a>` : ""}
-    ${hasNext ? `<a href="/?page=${page + 1}">다음 »</a>` : ""}
+  const pager = `<nav style="display:flex;gap:20px;margin-top:32px;padding-top:20px;border-top:1px solid var(--line)">
+    ${page > 1 ? `<a href="/?page=${page - 1}">&larr; Previous</a>` : ""}
+    ${hasNext ? `<a href="/?page=${page + 1}" style="margin-left:auto">Next &rarr;</a>` : ""}
   </nav>`;
 
   const bannerRailHtml = await renderBannerRail({

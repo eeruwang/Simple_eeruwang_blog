@@ -192,16 +192,18 @@ export async function renderPostPage(
   `;
 
   const body = `<article>
-  ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
-
-  <div class="titlebar" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 6px;">
-    <h1 class="title" style="margin:0;">${escapeHtml(title)}</h1>
+  <div class="article-header">
+    <a href="/" data-back class="back-link">&larr; Back</a>
     <div class="meta">${dateStr}</div>
-    <a href="/" data-back style="margin-left:auto; text-decoration:none;">← 돌아가기</a>
   </div>
 
-  <div class="tags" style="margin-top:6px;">${tagsHtml(r as any)}</div>
-  <div id="content" class="content" style="margin-top:8px">${contentHtml}</div>
+  <h1 class="article-title">${escapeHtml(title)}</h1>
+
+  <div class="tags" style="margin-bottom:20px;">${tagsHtml(r as any)}</div>
+
+  ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
+
+  <div id="content" class="content">${contentHtml}</div>
 </article>
 
 ${bannersHtml}
