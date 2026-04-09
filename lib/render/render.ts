@@ -75,11 +75,10 @@ export function pageHtml(
 </head>
 <body>
   <div class="container">
+    <nav class="site-topnav">
+      <a href="/about">About</a> &middot; <a href="/rss.xml">RSS</a> &middot; <a href="/editor">Editor</a>
+    </nav>
     <h1><a href="/" style="text-decoration:none;color:inherit">${escapeHtml(siteName)}</a></h1>
-
-    <div class="info">
-      <p><a href="/about">About</a> &middot; <a href="/rss.xml">RSS</a> &middot; <a href="/editor">Editor</a></p>
-    </div>
 
     <main id="page">
       ${body}

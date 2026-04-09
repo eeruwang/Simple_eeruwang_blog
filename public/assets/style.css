@@ -68,7 +68,7 @@ body:not(.editor-page) {
    ================================================================ */
 h1 {
   font-size: 250%;
-  margin-top: 80px;
+  margin-top: 12px;
   margin-bottom: 0px;
   line-height: 1.15;
 }
@@ -81,18 +81,19 @@ h2 {
 
 a { color: #000; }
 
-/* Info links (About / RSS / Editor) */
-.info * {
-  margin: 0px;
-  opacity: 0.8;
+/* Top nav (About / RSS / Editor) — above h1 */
+.site-topnav {
+  font-size: 0.7rem;
+  color: #999;
+  letter-spacing: 0.02em;
+  margin: 0;
 }
-.info *:not(:first-child) { margin-top: 24px; }
-.info a {
-  font-weight: bold;
-  color: #000;
+.site-topnav a {
+  color: #888;
   text-decoration: none;
+  font-weight: 500;
 }
-.info a:hover { text-decoration: underline; }
+.site-topnav a:hover { color: #000; text-decoration: underline; }
 
 /* ================================================================
    DATE LABELS (month grouping)
@@ -231,8 +232,8 @@ a { color: #000; }
 .article-page {}
 
 .article-back {
-  margin: 0 0 20px;
-  font-size: 0.85em;
+  margin: 0 0 40px;
+  font-size: 0.75em;
 }
 .article-back a {
   color: #333;
@@ -470,6 +471,7 @@ a[href], button, [role="button"], .pressable {
    ================================================================ */
 @media only screen and (max-width: 750px) {
   h1, h2 { margin-left: var(--indent); margin-right: var(--indent); }
+  .site-topnav { padding-left: var(--indent); padding-right: var(--indent); }
   .info { padding-left: var(--indent); padding-right: var(--indent); }
   .date { padding-left: 20px; }
   body:not(.editor-page) { margin: 0px; }
