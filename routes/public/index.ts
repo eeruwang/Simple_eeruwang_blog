@@ -151,6 +151,7 @@ export async function renderIndex(env: Env, page: number = 1): Promise<Response>
 
   const html = pageHtml(
     {
+      showIntro: true,
       headExtra: `<script src="/assets/press.js" defer></script>`,
       body: `
         <h2>Articles</h2>

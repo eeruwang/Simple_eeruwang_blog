@@ -54,7 +54,7 @@ function absolutize(env: EnvLike, u?: string): string {
 
 /* ===== HTML 프레임 ===== */
 export function pageHtml(
-  { title, body, headExtra = "" }: { title?: string; body: string; headExtra?: string },
+  { title, body, headExtra = "", showIntro = false }: { title?: string; body: string; headExtra?: string; showIntro?: boolean },
   env: EnvLike
 ): string {
   const year = new Date().getFullYear();
@@ -79,7 +79,12 @@ export function pageHtml(
       <a href="/about">About</a> &middot; <a href="/rss.xml">RSS</a> &middot; <a href="/editor">Editor</a>
     </nav>
     <h1><a href="/" style="text-decoration:none;color:inherit">${escapeHtml(siteName)}</a></h1>
-
+${showIntro ? `
+    <div class="site-intro">
+      <p>개인용 블로그 &middot; 노트 엔진입니다. 마크다운 기반의 경량 블로그로, 글 작성과 게시를 위한 최소 에디터가 포함되어 있습니다. BibTeX 인용, 각주, 태그, RSS를 지원합니다.</p>
+      <p class="site-inspired">This blog is inspired by <a href="https://alignment.anthropic.com/">Anthropic's Alignment Science Blog</a>.</p>
+    </div>
+` : ""}
     <main id="page">
       ${body}
     </main>

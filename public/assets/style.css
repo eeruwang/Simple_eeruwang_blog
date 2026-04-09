@@ -95,6 +95,29 @@ a { color: #000; }
 }
 .site-topnav a:hover { color: #000; text-decoration: underline; }
 
+/* Site intro (homepage only) */
+.site-intro {
+  margin-top: 24px;
+  margin-bottom: 0;
+  font-size: 0.85em;
+  line-height: 1.7;
+  color: #444;
+  max-width: 560px;
+}
+.site-intro p { margin: 0 0 8px; }
+.site-inspired {
+  font-style: italic;
+  font-size: 0.9em;
+  color: #888;
+}
+.site-inspired a {
+  color: #666;
+  text-decoration: underline;
+  text-decoration-color: rgba(0,0,0,.2);
+  text-underline-offset: 2px;
+}
+.site-inspired a:hover { color: #000; text-decoration-color: #000; }
+
 /* ================================================================
    DATE LABELS (month grouping)
    ================================================================ */
