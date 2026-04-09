@@ -38,9 +38,18 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
       const slug = (r.slug || "").trim();
       const title = r.title || "(제목 없음)";
       const excerpt = (r.excerpt || deriveExcerptFromRecord(r as any, 160) || "").trim();
-      const dataTags = getTags(r).map((x) => String(x).trim()).filter(Boolean).join(",");
+      const postTags = getTags(r).map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+      const dataTags = postTags.join(",");
+      const isPaper = postTags.includes("paper");
+      const cls = isPaper ? "paper" : "note";
 
-      return `<a href="/post/${encodeURIComponent(slug)}" class="note" data-tags="${escapeAttr(dataTags)}">
+      if (isPaper) {
+        return `<a href="/post/${encodeURIComponent(slug)}" class="${cls}" data-tags="${escapeAttr(dataTags)}">
+          <h3>${escapeHtml(title)}</h3>
+          ${excerpt ? `<p class="description">${escapeHtml(excerpt)}</p>` : ""}
+        </a>`;
+      }
+      return `<a href="/post/${encodeURIComponent(slug)}" class="${cls}" data-tags="${escapeAttr(dataTags)}">
         <h3>${escapeHtml(title)}</h3>${excerpt ? `<p class="description">${escapeHtml(excerpt)}</p>` : ""}
       </a>`;
     })
