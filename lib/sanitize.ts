@@ -8,11 +8,15 @@ export function sanitize(html: string): string {
       "img","figure","figcaption",
       "h1","h2","h3","h4","h5","h6",
       "table","thead","tbody","tfoot","tr","td","th",
-      "mark","sup","sub"
+      "mark","sup","sub",
+      "div","button","script"
     ],
     allowedAttributes: {
       a: ["href","name","target","rel"],
       img: ["src","srcset","sizes","alt","title","width","height","loading"],
+      div: ["id","class","data-*","data-transcript-viewer","data-transcript-urls"],
+      button: ["class","type"],
+      script: ["type"],
       "*": ["id","class","data-*"]
     },
     allowedSchemes: ["http","https","mailto","data"],

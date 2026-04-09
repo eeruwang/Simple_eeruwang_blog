@@ -15,11 +15,33 @@ const md = new MarkdownIt({
 // md.use(footnote);
 // md.use(anchor, { permalink: anchor.permalink.ariaHidden({}) });
 
+/**
+ * :::transcript 전처리
+ *
+ * 사용법:
+ *   :::transcript /data/file.json
+ *   :::transcript /data/a.json, /data/b.json
+ *   :::transcript url1 url2 url3
+ */
+function preprocessTranscripts(src: string): string {
+  return src.replace(
+    /^:::transcript\s+(.+)$/gm,
+    (_match, urlsPart: string) => {
+      const urls = urlsPart
+        .split(/[,\s]+/)
+        .map((u: string) => u.trim())
+        .filter(Boolean);
+      if (!urls.length) return _match;
+      const joined = urls.join(",");
+      return `<div data-transcript-viewer data-transcript-urls="${joined}"></div>\n<script src="/assets/transcript-viewer.js" defer></script>`;
+    }
+  );
+}
+
 export function mdToHtml(src: string): string {
-  return md.render(src || "");
+  return md.render(preprocessTranscripts(src || ""));
 }
 
 export function mdToSafeHtml(src: string): string {
-  // 마크다운 → HTML 직후에 sanitize
   return sanitize(mdToHtml(src));
 }
