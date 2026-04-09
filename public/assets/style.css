@@ -41,7 +41,14 @@
 
 /* ==== Reset ==== */
 *, *::before, *::after { box-sizing: border-box; }
-html, body { height: auto; min-height: 100%; scroll-behavior: smooth; }
+html {
+  height: auto;
+  min-height: 100%;
+  scroll-behavior: smooth;
+  /* 2025+ scrollbar-gutter: prevents layout shift when scrollbar appears/disappears */
+  scrollbar-gutter: stable;
+}
+body { height: auto; min-height: 100%; }
 
 /* ================================================================
    CONTAINER — the main page wrapper
