@@ -397,6 +397,46 @@ export async function initEditor() {
     }
   }
 
+  /* ───────────────── Transcript 삽입 메뉴 ───────────────── */
+  function bindTranscriptInsert() {
+    var btn = document.getElementById("transcriptBtn");
+    var menu = document.getElementById("transcriptMenu");
+    if (!btn || !menu) return;
+
+    // 토글
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      menu.style.display = menu.style.display === "none" ? "flex" : "none";
+    });
+
+    // 바깥 클릭 시 닫기
+    document.addEventListener("click", function () { menu.style.display = "none"; });
+    menu.addEventListener("click", function (e) { e.stopPropagation(); });
+
+    // 메뉴 항목 클릭
+    menu.querySelectorAll("button[data-action]").forEach(function (item) {
+      item.addEventListener("click", function () {
+        var action = item.dataset.action;
+        var text = "";
+
+        if (action === "new-block") {
+          var title = prompt("Transcript 제목을 입력하세요:", "Transcript");
+          if (!title) return;
+          text = '\n:::transcript "' + title + '"\n\n> agent:thought\n여기에 내용을 작성하세요...\n\n:::end\n';
+        } else if (action === "end-block") {
+          text = "\n:::end\n";
+        } else {
+          // agent:thought, result:chat_output 등
+          text = "\n> " + action + "\n여기에 내용을 작성하세요...\n";
+        }
+
+        insertMarkdownAtCursor(text);
+        menu.style.display = "none";
+      });
+    });
+  }
+
   /* ───────────────── 이미지 업로드 → Blob → 본문 삽입 ───────────────── */
   async function uploadImageToBlob(file) {
     const tok = getToken();
@@ -532,6 +572,7 @@ export async function initEditor() {
   try { await ensureEditor(); } catch (e) { console.error(e); setHint(e?.message || "에디터 로드 실패"); }
   bindImageUpload();
   bindBibtexUpload();
+  bindTranscriptInsert();
   await loadList();
   useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
   setHint("에디터 준비됨", 1500);

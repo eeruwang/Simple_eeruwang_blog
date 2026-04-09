@@ -90,7 +90,25 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
                 <input id="attach" type="file" multiple accept="image/*" class="hidden" />
                 <button type="button" class="auth-only" id="bibtexBtn" title="Upload reference.bib">BIBTEX</button>
                 <input id="bibtexFile" type="file" accept=".bib,text/plain" class="hidden" />
-
+                <div style="position:relative;display:inline-block">
+                  <button type="button" class="auth-only" id="transcriptBtn" title="Insert transcript block">Transcript</button>
+                  <div id="transcriptMenu" class="transcript-insert-menu" style="display:none">
+                    <button type="button" data-action="new-block">New transcript block</button>
+                    <hr>
+                    <span class="menu-label">Add entry:</span>
+                    <button type="button" data-action="agent:thought">Agent: Thought</button>
+                    <button type="button" data-action="agent:send_message">Agent: Message</button>
+                    <button type="button" data-action="agent:tool_call">Agent: Tool call</button>
+                    <button type="button" data-action="agent:bash_tool">Agent: Bash</button>
+                    <button type="button" data-action="agent:code_write">Agent: Code</button>
+                    <button type="button" data-action="result:chat_output">Result: Chat output</button>
+                    <button type="button" data-action="result:thinking">Result: Thinking</button>
+                    <button type="button" data-action="result:bash_output">Result: Bash output</button>
+                    <button type="button" data-action="summary:finding">Summary: Finding</button>
+                    <button type="button" data-action="summary:critical_finding">Summary: Critical</button>
+                    <button type="button" data-action="end-block">Close :::end</button>
+                  </div>
+                </div>
               </div>
             </div>
 
