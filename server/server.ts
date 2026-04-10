@@ -154,12 +154,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // 3) 에디터 API 보호 라우트 (/api/…)
     if (path.startsWith("/api/")) {
-      // 🔐 가드: 토큰 검사
-      const tok = getEditorTokenFromHeaders(req);
-      if (!tok || tok !== env.EDITOR_PASSWORD) {
-        applyEditorCors(req, res, env);
-        setSecurityHeadersVercel(res);
-        return res.status(401).json({ error: "Unauthorized" });
+      // 공개 GET 화이트리스트
+      const isPublicGet = req.method === "GET" && (
+        path === "/api/posts" ||
+        /^\/api\/posts\/\d+$/.test(path) ||
+        path === "/api/diag-db"
+      );
+
+      if (!isPublicGet) {
+        const tok = getEditorTokenFromHeaders(req);
+        if (!tok || tok !== env.EDITOR_PASSWORD) {
+          applyEditorCors(req, res, env);
+          setSecurityHeadersVercel(res);
+          return res.status(401).json({ error: "Unauthorized" });
+        }
       }
 
       const headers = new Headers();

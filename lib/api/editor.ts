@@ -16,6 +16,15 @@ export type { DB, Env };
 import { put, del } from "@vercel/blob";
 import { Buffer } from "node:buffer";
 import { normalizeSlug } from "../../lib/slug.js";
+import * as noco from "../db/nocodb.js";
+
+// NocoDB 모드 감지 (파일 상단에서 초기화 — 호이스팅 문제 방지)
+const _useNocoDB = !!(
+  process.env.NOCODB_HOST &&
+  process.env.NOCODB_API_KEY &&
+  process.env.NOCODB_TABLE_ID
+);
+if (_useNocoDB) console.log("[editor] NocoDB mode enabled");
 
 // ─────────────────────────────────────────────────────────────
 // Module-level singletons
@@ -588,13 +597,6 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
 // ─────────────────────────────────────────────────────────────
 // NocoDB CRUD handler (NOCODB_HOST가 설정된 경우 사용)
 // ─────────────────────────────────────────────────────────────
-import * as noco from "../db/nocodb.js";
-
-const _useNocoDB = !!(
-  process.env.NOCODB_HOST &&
-  process.env.NOCODB_API_KEY &&
-  process.env.NOCODB_TABLE_ID
-);
 
 export async function handleEditorApiNocoDB(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
