@@ -32,6 +32,11 @@ export type AppEnv = {
   BIBTEX_STYLE?: string;
 
   DATABASE_URL: string; // 또는 NEON_DATABASE_URL 우선
+
+  // NocoDB (설정 시 PostgreSQL 대신 사용)
+  NOCODB_HOST?: string;
+  NOCODB_API_KEY?: string;
+  NOCODB_TABLE_ID?: string;
 };
 
 export const env: AppEnv = (() => {
@@ -41,7 +46,8 @@ export const env: AppEnv = (() => {
   // DB 우선순위: NEON_DATABASE_URL -> DATABASE_URL
   const NEON = opt("NEON_DATABASE_URL");
   const DB = opt("DATABASE_URL");
-  const DATABASE_URL = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || "";
+  const hasNocoDB = !!(opt("NOCODB_HOST") && opt("NOCODB_API_KEY") && opt("NOCODB_TABLE_ID"));
+  const DATABASE_URL = hasNocoDB ? "" : (process.env.DATABASE_URL || process.env.NEON_DATABASE_URL || "");
 
   return {
     SITE_URL,
@@ -57,5 +63,9 @@ export const env: AppEnv = (() => {
     BIBTEX_STYLE: opt("BIBTEX_STYLE"),
 
     DATABASE_URL,
+
+    NOCODB_HOST: opt("NOCODB_HOST"),
+    NOCODB_API_KEY: opt("NOCODB_API_KEY"),
+    NOCODB_TABLE_ID: opt("NOCODB_TABLE_ID"),
   };
 })();

@@ -82,6 +82,11 @@ function firstExistingPath(...paths: string[]): string | null {
 }
 
 export async function bootstrapDb(db: DB): Promise<void> {
+  // NocoDB 모드에서는 PostgreSQL 스키마 초기화 불필요
+  if (process.env.NOCODB_HOST && process.env.NOCODB_API_KEY && process.env.NOCODB_TABLE_ID) {
+    console.log("[bootstrap] NocoDB mode — skipping PostgreSQL schema init");
+    return;
+  }
   const schemaPath =
     firstExistingPath(
       path.resolve(__dirname, "schema.sql"),

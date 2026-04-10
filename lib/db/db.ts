@@ -1,14 +1,29 @@
 // lib/db/db.ts
-/* Cross-runtime Postgres client:
+/* Cross-runtime database client:
+ * - NocoDB(REST API): NOCODB_HOST 설정 시 사용
  * - Vercel/Neon(serverless): @neondatabase/serverless (fetch 기반)
  * - Docker/Node: pg Pool (TCP)
  *
  * 선택 규칙
+ * 0) NOCODB_HOST + NOCODB_API_KEY + NOCODB_TABLE_ID 가 있으면 NocoDB
  * 1) process.env.NEON_DATABASE_URL 가 있으면 네온 드라이버 사용
  * 2) 아니면 process.env.DATABASE_URL 사용
  * 3) URL에 'neon.tech' 포함되면 네온 드라이버 강제
  * 4) 그 외엔 pg Pool
  */
+
+import * as nocodb from "./nocodb.js";
+
+// NocoDB 모드 감지
+const useNocoDB = !!(
+  process.env.NOCODB_HOST &&
+  process.env.NOCODB_API_KEY &&
+  process.env.NOCODB_TABLE_ID
+);
+
+if (useNocoDB) {
+  console.log("[db] NocoDB mode enabled →", process.env.NOCODB_HOST);
+}
 
 export type PostRow = {
   id: number;
@@ -140,6 +155,7 @@ function pageOffset(page = 1, perPage = 10) {
 
 // 드라이버 확인용
 export function driverKind() {
+  if (useNocoDB) return "nocodb";
   return looksLikeNeon ? "neon" : "pg";
 }
 
@@ -153,6 +169,7 @@ export function asArrayRows<T>(res: any): T[] {
 
 // DB 헬스체크
 export async function pingDb() {
+  if (useNocoDB) return nocodb.pingDb();
   const rows = await query<{ now: string }>("select now() as now");
   return { now: rows[0]?.now };
 }
@@ -161,6 +178,7 @@ export async function pingDb() {
 
 /** 목록(게시글만) */
 export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
+  if (useNocoDB) return nocodb.listPosts(page, perPage);
   const { take, offset } = pageOffset(page, perPage);
   const rows = await query<PostRow>(
     `
@@ -177,6 +195,7 @@ export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
 
 /** 태그별 목록 */
 export async function listByTag(tag: string, page = 1, perPage = 10): Promise<PostRow[]> {
+  if (useNocoDB) return nocodb.listByTag(tag, page, perPage);
   const { take, offset } = pageOffset(page, perPage);
   const rows = await query<PostRow>(
     `
@@ -195,6 +214,7 @@ export async function listByTag(tag: string, page = 1, perPage = 10): Promise<Po
 
 /** 슬러그로 조회(포스트/페이지 공용) */
 export async function getBySlug(slug: string): Promise<PostRow | null> {
+  if (useNocoDB) return nocodb.getBySlug(slug);
   const rows = await query<PostRow>(
     `select * from posts where lower(slug) = lower($1) limit 1`,
     [slug]
@@ -207,6 +227,7 @@ export async function getPageBySlug(
   slug: string,
   opts?: { includeDraft?: boolean }
 ): Promise<PostRow | null> {
+  if (useNocoDB) return nocodb.getPageBySlug(slug, opts);
   const includeDraft = !!opts?.includeDraft;
   const rows = await query<PostRow>(
     `
@@ -228,6 +249,7 @@ export async function getPostBySlug(
   slug: string,
   opts?: { includeDraft?: boolean }
 ): Promise<PostRow | null> {
+  if (useNocoDB) return nocodb.getPostBySlug(slug, opts);
   const includeDraft = !!opts?.includeDraft;
   const rows = await query<PostRow>(
     `

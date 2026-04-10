@@ -136,6 +136,9 @@ async function getSetting(db: DB, key: string): Promise<string | null> {
 // API Entry
 // ─────────────────────────────────────────────────────────────
 export async function handleEditorApi(request: Request, env: Env): Promise<Response> {
+  // NocoDB 모드면 전용 핸들러로 위임
+  if (_useNocoDB) return handleEditorApiNocoDB(request, env);
+
   const url = new URL(request.url);
   const pathname = url.pathname;
   const db = createDb(env);
@@ -575,6 +578,201 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       return json({ ok: true, deleted: rows[0].id });
     } catch (e: any) {
       if (isMissingTableError(e)) { await bootstrapDb(db); return json({ error: "not found" }, 404); }
+      return json({ error: e?.message || String(e) }, 500);
+    }
+  }
+
+  return json({ error: "Not Found" }, 404);
+}
+
+// ─────────────────────────────────────────────────────────────
+// NocoDB CRUD handler (NOCODB_HOST가 설정된 경우 사용)
+// ─────────────────────────────────────────────────────────────
+import * as noco from "../db/nocodb.js";
+
+const _useNocoDB = !!(
+  process.env.NOCODB_HOST &&
+  process.env.NOCODB_API_KEY &&
+  process.env.NOCODB_TABLE_ID
+);
+
+export async function handleEditorApiNocoDB(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+  const isEditor = requireEditor(request, env);
+
+  // ── 헬스체크
+  if (pathname === "/api/diag-db" && request.method === "GET") {
+    try {
+      const info = await noco.pingDb();
+      return json({ ok: true, now: info.now, driver: "nocodb" });
+    } catch (e: any) {
+      return json({ ok: false, error: e?.message || String(e) }, 500);
+    }
+  }
+
+  // ── 부트스트랩 (NocoDB는 스키마 자동 — NOOP)
+  if (pathname === "/api/admin/bootstrap") {
+    return json({ ok: true, message: "NocoDB mode: no bootstrap needed" });
+  }
+
+  // ── 설정 API
+  if (pathname === "/api/admin/settings") {
+    if (!isEditor) return json({ error: "unauthorized" }, 401);
+    if (request.method === "GET") {
+      const key = url.searchParams.get("key");
+      if (key) {
+        const v = await noco.nocoGetSetting(key);
+        return json({ ok: true, key, value: v });
+      }
+      return json({ ok: true, list: [] });
+    }
+    if (request.method === "PUT") {
+      const body = await readJsonSafe(request);
+      await noco.nocoSetSetting(String(body?.key || ""), String(body?.value ?? ""));
+      return json({ ok: true });
+    }
+  }
+
+  // ── 미리보기
+  if (pathname === "/api/posts/preview" && request.method === "POST") {
+    if (!isEditor) return json({ error: "unauthorized" }, 401);
+    const body = await readJsonSafe(request);
+    const md = String(body?.md ?? body?.text ?? "");
+    const { mdToSafeHtml } = await import("../markdown.js");
+    return json({ ok: true, html: mdToSafeHtml(md) });
+  }
+
+  // ── 업로드 (기존 Vercel Blob 로직 유지 — NocoDB와 무관)
+  if (pathname === "/api/upload" && request.method === "POST") {
+    // 업로드는 원래 handleEditorApi의 로직을 그대로 사용
+    // NocoDB 모드에서도 Vercel Blob 또는 NocoDB Storage 사용 가능
+    return json({ error: "Upload not configured for NocoDB mode" }, 501);
+  }
+
+  // ── Posts CRUD
+  const postsRoot = pathname === "/api/posts";
+  const mById = pathname.match(/^\/api\/posts\/(\d+)$/);
+
+  // GET: 목록/단건
+  if (request.method === "GET" && (postsRoot || mById)) {
+    try {
+      if (mById) {
+        const row = await noco.nocoGetById(Number(mById[1]));
+        if (!row) return json({ error: "not found" }, 404);
+        if (!row.published && !row.is_page && !isEditor) return json({ error: "not found" }, 404);
+        return json({ item: row });
+      }
+
+      const idQ = url.searchParams.get("id");
+      const slugQ = url.searchParams.get("slug");
+
+      if (idQ) {
+        const row = await noco.nocoGetById(Number(idQ));
+        if (!row) return json({ error: "not found" }, 404);
+        if (!row.published && !row.is_page && !isEditor) return json({ error: "not found" }, 404);
+        return json({ item: row });
+      }
+
+      if (slugQ) {
+        const row = await noco.getBySlug(slugifyForApi(String(slugQ)));
+        if (!row) return json({ error: "not found" }, 404);
+        if (!row.published && !row.is_page && !isEditor) return json({ error: "not found" }, 404);
+        return json({ item: row });
+      }
+
+      // 목록
+      const limit = Math.min(parseInt(url.searchParams.get("limit") || "100", 10) || 100, 1000);
+      const offset = Math.max(parseInt(url.searchParams.get("offset") || "0", 10) || 0, 0);
+      const rows = await noco.nocoListAll(limit, offset, isEditor);
+      return json({ list: rows });
+    } catch (e: any) {
+      return json({ error: e?.message || String(e) }, 500);
+    }
+  }
+
+  // POST: 생성
+  if (request.method === "POST" && postsRoot) {
+    if (!isEditor) return json({ error: "unauthorized" }, 401);
+    try {
+      const body = await readJsonSafe(request);
+      const inputs = Array.isArray(body) ? body : [body];
+      const created = [];
+
+      for (const b of inputs) {
+        const tags = normTags(b.tags);
+        let slug = slugifyForApi(b.slug || b.title || "");
+        // slug 중복 체크
+        let n = 0;
+        while (await noco.nocoIsSlugTaken(slug) && n < 100) {
+          n++;
+          slug = `${slugifyForApi(b.slug || b.title || "post")}-${n}`;
+        }
+
+        const row = await noco.nocoCreate({
+          title: b.title || "(untitled)",
+          body_md: b.body_md ?? b.bodyMd ?? "",
+          slug,
+          tags,
+          excerpt: b.excerpt ?? "",
+          is_page: !!b.is_page,
+          published: !!b.published,
+          published_at: b.published_at || (b.published ? new Date().toISOString() : null),
+          cover_url: b.cover_url ?? null,
+        });
+        created.push(row);
+      }
+
+      return json({ ok: true, created });
+    } catch (e: any) {
+      return json({ error: e?.message || String(e) }, 500);
+    }
+  }
+
+  // PUT/PATCH: 수정
+  if ((request.method === "PUT" || request.method === "PATCH") && pathname.startsWith("/api/posts/")) {
+    if (!isEditor) return json({ error: "unauthorized" }, 401);
+    const m = pathname.match(/^\/api\/posts\/(\d+)$/);
+    if (!m) return json({ error: "bad request" }, 400);
+    const id = Number(m[1]);
+
+    try {
+      const body = await readJsonSafe(request);
+      const updates: Record<string, any> = {};
+
+      if (typeof body.title === "string") updates.title = body.title;
+      if (body.body_md !== undefined) updates.body_md = body.body_md;
+      if (body.bodyMd !== undefined) updates.body_md = body.bodyMd;
+      if (typeof body.excerpt === "string") updates.excerpt = body.excerpt;
+      if (typeof body.cover_url === "string") updates.cover_url = body.cover_url;
+      if (typeof body.is_page === "boolean") updates.is_page = body.is_page;
+      if (typeof body.published === "boolean") updates.published = body.published;
+      if (body.published_at !== undefined) updates.published_at = body.published_at;
+      if (body.tags !== undefined) updates.tags = normTags(body.tags);
+      if (typeof body.slug === "string" && body.slug.trim()) {
+        const newSlug = slugifyForApi(body.slug);
+        if (!(await noco.nocoIsSlugTaken(newSlug, id))) {
+          updates.slug = newSlug;
+        }
+      }
+
+      const updated = await noco.nocoUpdate(id, updates);
+      return json({ ok: true, updated });
+    } catch (e: any) {
+      return json({ error: e?.message || String(e) }, 500);
+    }
+  }
+
+  // DELETE
+  if (request.method === "DELETE" && pathname.startsWith("/api/posts/")) {
+    if (!isEditor) return json({ error: "unauthorized" }, 401);
+    const m = pathname.match(/^\/api\/posts\/(\d+)$/);
+    if (!m) return json({ error: "bad request" }, 400);
+    const id = Number(m[1]);
+    try {
+      await noco.nocoDelete(id);
+      return json({ ok: true, deleted: id });
+    } catch (e: any) {
       return json({ error: e?.message || String(e) }, 500);
     }
   }
