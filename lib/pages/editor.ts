@@ -12,6 +12,8 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Editor</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="mask-icon" href="/favicon.svg" color="#1e2b7a">
 
 <!-- CDN preconnect (DNS + TLS 미리) -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>

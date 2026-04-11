@@ -67,6 +67,8 @@ export function pageHtml(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${escapeHtml(docTitle)}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="mask-icon" href="/favicon.svg" color="#1e2b7a">
   <link rel="alternate" type="application/rss+xml" href="/rss.xml" title="RSS">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

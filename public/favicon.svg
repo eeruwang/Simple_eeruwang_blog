@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    이루왕 블로그 파비콘. 원본 PNG 없이 벡터로 재현한 파일입니다.
+    - 원형 클립 안에 수영장 타일 배경
+    - 라이트 시안 골대 프레임(직사각형 테두리)
+    - 하단에 겹쳐진 파도 레이어
+    SVG 한 장으로 16px 부터 512px 까지 스케일됩니다.
+  -->
+  <defs>
+    <clipPath id="circle">
+      <circle cx="256" cy="256" r="256"/>
+    </clipPath>
+    <pattern id="pool-tiles" x="0" y="0" width="36" height="36" patternUnits="userSpaceOnUse">
+      <rect width="36" height="36" fill="#1e2b7a"/>
+      <path d="M36 0 H0 V36" fill="none" stroke="#2e3c95" stroke-width="1.5"/>
+    </pattern>
+  </defs>
+
+  <g clip-path="url(#circle)">
+    <!-- 풀 타일 배경 -->
+    <rect width="512" height="512" fill="url(#pool-tiles)"/>
+
+    <!-- 골대 프레임 -->
+    <rect x="128" y="96" width="256" height="220"
+          fill="none" stroke="#6cc0ec" stroke-width="22" stroke-linejoin="miter"/>
+
+    <!-- 파도 레이어 (뒤→앞) -->
+    <path d="M-20 332 C 90 296 180 370 300 336 S 500 318 540 354 L 540 540 L -20 540 Z"
+          fill="#e7e5f4"/>
+    <path d="M-20 378 C 95 348 205 410 320 378 S 505 362 540 406 L 540 540 L -20 540 Z"
+          fill="#b3abd3"/>
+    <path d="M-20 422 C 100 394 210 454 324 422 S 510 412 540 450 L 540 540 L -20 540 Z"
+          fill="#6c6ebc"/>
+    <path d="M-20 468 C 110 440 220 498 330 468 S 510 458 540 494 L 540 540 L -20 540 Z"
+          fill="#3b43a4"/>
+  </g>
+</svg>
