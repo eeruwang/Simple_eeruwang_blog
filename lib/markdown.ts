@@ -1,4 +1,5 @@
 // lib/markdown.ts
+import { Buffer } from "node:buffer";
 import MarkdownIt from "markdown-it";
 import { sanitize } from "./sanitize.js";
 
@@ -53,39 +54,39 @@ function preprocessTranscripts(src: string): string {
   tvCounter = 0;
 
   // 모드 2: 인라인 블록 (:::transcript "title" ... :::end)
+  // 주의: 본문 내용은 data-transcript-json(base64)로 직렬화합니다.
+  // 이전 버전은 <script>에 JSON을 그대로 넣었으나, sanitize 정책에서
+  // <script>를 완전히 제거했기 때문에 data-* 속성으로 전달합니다.
   src = src.replace(
     /^:::transcript\s+"([^"]+)"[ \t]*\n([\s\S]*?)^:::end[ \t]*$/gm,
     (_match, title: string, body: string) => {
       tvCounter++;
       const id = `tv-inline-${tvCounter}`;
       const entries = parseInlineEntries(body);
-      const data = {
-        name: title,
-        entries,
-      };
+      const data = { name: title, entries };
       const json = JSON.stringify(data);
-      // script 태그에 JSON을 인라인으로 넣어 fetch 없이 바로 사용
+      const b64 = Buffer.from(json, "utf8").toString("base64");
       return (
-        `<div data-transcript-viewer id="${id}">` +
-        `<script type="application/json">${escapeJsonForHtml(JSON.stringify({ transcripts: [{ id, inline: true }] }))}</script>` +
-        `<script type="application/transcript-data" data-id="${id}">${escapeJsonForHtml(json)}</script>` +
-        `</div>\n` +
-        `<script src="/assets/transcript-viewer.js" defer></script>`
+        `<div data-transcript-viewer id="${id}"` +
+        ` data-transcript-inline="1"` +
+        ` data-transcript-json="${b64}"></div>`
       );
     }
   );
 
-  // 모드 1: URL 참조 (기존)
+  // 모드 1: URL 참조 — http/https만 허용(XSS/JS 스킴 차단)
   src = src.replace(
     /^:::transcript\s+(.+)$/gm,
     (_match, urlsPart: string) => {
       const urls = urlsPart
         .split(/[,\s]+/)
         .map((u: string) => u.trim())
-        .filter(Boolean);
+        .filter((u: string) => /^https?:\/\//i.test(u));
       if (!urls.length) return _match;
-      const joined = urls.join(",");
-      return `<div data-transcript-viewer data-transcript-urls="${joined}"></div>\n<script src="/assets/transcript-viewer.js" defer></script>`;
+      const joined = urls.join(",")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;");
+      return `<div data-transcript-viewer data-transcript-urls="${joined}"></div>`;
     }
   );
 
@@ -115,10 +116,6 @@ function parseInlineEntries(body: string): Array<{ type: string; subtype?: strin
   }
 
   return entries;
-}
-
-function escapeJsonForHtml(json: string): string {
-  return json.replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
 }
 
 export function mdToHtml(src: string): string {

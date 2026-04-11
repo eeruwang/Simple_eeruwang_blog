@@ -103,27 +103,44 @@ async function ensureUniqueSlugNoTx(db: DB, desired: string): Promise<string> {
   return ensureUniqueSlug({ query: db.query }, desired);
 }
 
-// 아주 보수적인 서버사이드 Markdown → HTML(외부 라이브러리 없이)
-function mdToSafeHtml(md: string): string {
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  let t = esc(md);
-  t = t.replace(/```([\s\S]*?)```/g, (_m, code) => `<pre><code>${code}</code></pre>`);
-  t = t.replace(/`([^`]+)`/g, (_m, code) => `<code>${code}</code>`);
-  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-  t = t.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>`);
-  t = t.replace(/^######\s+(.+)$/gm, "<h6>$1</h6>");
-  t = t.replace(/^#####\s+(.+)$/gm, "<h5>$1</h5>");
-  t = t.replace(/^####\s+(.+)$/gm, "<h4>$1</h4>");
-  t = t.replace(/^###\s+(.+)$/gm, "<h3>$1</h3>");
-  t = t.replace(/^##\s+(.+)$/gm, "<h2>$1</h2>");
-  t = t.replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
-  t = t
-    .split(/\n{2,}/)
-    .map(block => (/^\s*<(h\d|pre)>/.test(block) ? block : `<p>${block.replace(/\n/g, "<br>")}</p>`))
-    .join("\n");
-  return t;
+// 서버사이드 Markdown → 안전한 HTML: 전역 렌더러(markdown-it + sanitize-html)로 위임.
+async function mdToSafeHtml(md: string): Promise<string> {
+  const { mdToSafeHtml: render } = await import("../markdown.js");
+  return render(md);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Upload validation
+// ─────────────────────────────────────────────────────────────
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+
+// SVG는 XSS 벡터 가능성으로 제외. reference.bib 업로드는 text/plain로 들어옵니다.
+const ALLOWED_UPLOAD_MIME = new Set<string>([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "text/plain",
+  "application/x-bibtex",
+  "application/octet-stream",
+]);
+
+function sanitizeUploadFilename(name: string): string {
+  const basename = String(name || "").replace(/\\/g, "/").split("/").pop() || "";
+  const cleaned = basename
+    .normalize("NFKC")
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[^\w. -]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120);
+  return cleaned || `upload-${Date.now()}`;
+}
+
+function ensureAllowedMime(ct: string): boolean {
+  const t = String(ct || "").toLowerCase().split(";")[0]!.trim();
+  return ALLOWED_UPLOAD_MIME.has(t);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -221,12 +238,12 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
           usageHelp: true,
           ibid: true,
         });
-        const html = mdToSafeHtml(content) + bibliographyHtml;
+        const html = (await mdToSafeHtml(content)) + bibliographyHtml;
         return json({ ok: true, html });
       }
     } catch { /* 설정 없으면 기본 처리 */ }
 
-    const html = mdToSafeHtml(md);
+    const html = await mdToSafeHtml(md);
     return json({ ok: true, html });
   }
 
@@ -246,6 +263,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
       let filename = `upload-${Date.now()}`;
       let contentType = "application/octet-stream";
       let bodyForPut: Blob | ArrayBuffer;
+      let byteLen = 0;
 
       const ctypeHeader = request.headers.get("content-type") || "";
       if (ctypeHeader.startsWith("multipart/form-data")) {
@@ -254,20 +272,29 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         if (!f || typeof f === "string") return json({ error: "file field missing" }, 400);
         const file = f as File;
         // name 필드가 있으면 그것(= reference.bib)을 우선 사용
-        filename = (form.get("name") as string) || file.name || filename;
+        filename = sanitizeUploadFilename((form.get("name") as string) || file.name || filename);
         contentType = file.type || "text/plain";
+        byteLen = file.size || 0;
         bodyForPut = file; // Blob
       } else {
         const body = await readJsonSafe(request);
         const raw = String(body?.data || "");
-        filename = String(body?.name || filename);
+        filename = sanitizeUploadFilename(String(body?.name || filename));
         contentType = String(body?.contentType || contentType);
         const m = raw.match(/^data:[^;]+;base64,(.+)$/);
         const b64 = m ? m[1] : raw;
         const buf = Buffer.from(b64, "base64");
+        byteLen = buf.byteLength;
         const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
         bodyForPut = ab; // ArrayBuffer
         if (!contentType) contentType = "text/plain";
+      }
+
+      if (byteLen > MAX_UPLOAD_BYTES) {
+        return json({ error: "file too large", limit: MAX_UPLOAD_BYTES }, 413);
+      }
+      if (!ensureAllowedMime(contentType)) {
+        return json({ error: "unsupported content-type", contentType }, 415);
       }
 
       // 덮어쓰기: 기존 경로 삭제(실패해도 무시)
@@ -336,8 +363,8 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         if (!rows.length) return json({ error: "not found" }, 404);
         const row = rows[0];
 
-        // 공개 여부 확인 (비공개면 토큰 필요)
-        const isPublic = row.published === true || row.is_page === true;
+        // 공개 여부: 드래프트(페이지 포함)는 에디터만 볼 수 있음
+        const isPublic = row.published === true;
         if (!isPublic && !isEditor) return json({ error: "not found" }, 404);
 
         // 단건은 body_md 포함(공개 또는 에디터)
@@ -360,7 +387,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         );
         if (!rows.length) return json({ error: "not found" }, 404);
         const row = rows[0];
-        const isPublic = row.published === true || row.is_page === true;
+        const isPublic = row.published === true;
         if (!isPublic && !isEditor) return json({ error: "not found" }, 404);
         return json({ item: row });
       }
@@ -379,7 +406,7 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
         );
         if (!rows.length) return json({ error: "not found" }, 404);
         const row = rows[0];
-        const isPublic = row.published === true || row.is_page === true;
+        const isPublic = row.published === true;
         if (!isPublic && !isEditor) return json({ error: "not found" }, 404);
         return json({ item: row }); // 단건은 body_md 포함
       }
@@ -671,25 +698,35 @@ export async function handleEditorApiNocoDB(request: Request, env: Env): Promise
       let fileBlob: Blob;
 
       const ctypeHeader = request.headers.get("content-type") || "";
+      let byteLen = 0;
 
       if (ctypeHeader.startsWith("multipart/form-data")) {
         const form = await request.formData();
         const f = form.get("file");
         if (!f || typeof f === "string") return json({ error: "file field missing" }, 400);
         const file = f as File;
-        filename = (form.get("name") as string) || file.name || filename;
+        filename = sanitizeUploadFilename((form.get("name") as string) || file.name || filename);
         contentType = file.type || contentType;
+        byteLen = file.size || 0;
         fileBlob = file;
       } else {
         // JSON body: { name, contentType, data: base64 }
         const body = await readJsonSafe(request);
         const raw = String(body?.data || "");
-        filename = String(body?.name || filename);
+        filename = sanitizeUploadFilename(String(body?.name || filename));
         contentType = String(body?.contentType || contentType);
         const m = raw.match(/^data:[^;]+;base64,(.+)$/);
         const b64 = m ? m[1] : raw;
         const buf = Buffer.from(b64, "base64");
+        byteLen = buf.byteLength;
         fileBlob = new Blob([buf], { type: contentType });
+      }
+
+      if (byteLen > MAX_UPLOAD_BYTES) {
+        return json({ error: "file too large", limit: MAX_UPLOAD_BYTES }, 413);
+      }
+      if (!ensureAllowedMime(contentType)) {
+        return json({ error: "unsupported content-type", contentType }, 415);
       }
 
       const result = await noco.nocoUpload(fileBlob, filename, contentType);
@@ -745,7 +782,7 @@ export async function handleEditorApiNocoDB(request: Request, env: Env): Promise
       if (mById) {
         const row = await noco.nocoGetById(Number(mById[1]));
         if (!row) return json({ error: "not found" }, 404);
-        if (!row.published && !row.is_page && !isEditor) return json({ error: "not found" }, 404);
+        if (!row.published && !isEditor) return json({ error: "not found" }, 404);
         return json({ item: row });
       }
 
@@ -755,14 +792,14 @@ export async function handleEditorApiNocoDB(request: Request, env: Env): Promise
       if (idQ) {
         const row = await noco.nocoGetById(Number(idQ));
         if (!row) return json({ error: "not found" }, 404);
-        if (!row.published && !row.is_page && !isEditor) return json({ error: "not found" }, 404);
+        if (!row.published && !isEditor) return json({ error: "not found" }, 404);
         return json({ item: row });
       }
 
       if (slugQ) {
         const row = await noco.getBySlug(slugifyForApi(String(slugQ)));
         if (!row) return json({ error: "not found" }, 404);
-        if (!row.published && !row.is_page && !isEditor) return json({ error: "not found" }, 404);
+        if (!row.published && !isEditor) return json({ error: "not found" }, 404);
         return json({ item: row });
       }
 

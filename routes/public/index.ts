@@ -1,15 +1,17 @@
-/* ───────── 메인 인덱스 (API 버전) ─────────
- * - 공개 API(/api/posts)에서 글을 가져와 렌더
- * - 상단 태그 레일 + 클라이언트 필터 스크립트
- * - 페이지네이션: API에서 충분히 가져온 뒤 필터/슬라이스
+/* ───────── 메인 인덱스 (DB 직접 호출 버전) ─────────
+ * - 이전 버전은 자기 자신의 /api/posts로 HTTP 루프백 fetch를 보냈습니다.
+ *   Vercel 서버리스에선 매 요청마다 별도 함수 호출이 되어 상당한 오버헤드
+ *   + 편집자 토큰 노출 위험이 있어 제거했습니다.
+ * - 이제 lib/db/db.ts의 listPostsPaged/listAllTags를 직접 호출합니다.
  */
 
 import { pageHtml } from "../../lib/render/render.js";
 import { escapeAttr, escapeHtml } from "../../lib/util.js";
-import { getTags, tagsHtml } from "../../lib/render/tags.js";
+import { getTags } from "../../lib/render/tags.js";
 import { renderTagBar, getConfiguredTags, TAG_SCRIPT } from "../../lib/render/tags-ui.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 import { renderBannerRail } from "../../lib/render/banners.js";
+import { listPostsPaged, listAllTags, type PostRow } from "../../lib/db/db.js";
 
 type Env = {
   SITE_NAME?: string;
@@ -20,109 +22,27 @@ type Env = {
   [k: string]: unknown;
 };
 
-type ApiPost = {
-  id: number;
-  slug: string;
-  title: string;
-  body_md?: string;
-  tags?: string[];
-  excerpt?: string | null;
-  is_page?: boolean;
-  published?: boolean;
-  published_at?: string | null;
-  cover_url?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-function baseUrl(env: Env): string {
-  let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
-  if (raw) {
-    if (!/^https?:\/\//i.test(raw)) raw = "https://" + raw;
-    return raw.replace(/\/+$/, "");
-  }
-  const vurl = (globalThis as any).process?.env?.VERCEL_URL;
-  if (vurl) return `https://${String(vurl).replace(/\/+$/, "")}`;
-  return "http://localhost:3000";
-}
-
-/** 공개 글만 필터하고 날짜 내림차순 정렬 */
-function toPublicSorted(list: ApiPost[]): ApiPost[] {
-  const onlyPublic = (list || []).filter(
-    (it) => it && it.published === true && it.is_page !== true
-  );
-  onlyPublic.sort((a, b) => {
-    const ad = new Date(a.published_at || a.updated_at || a.created_at || 0).getTime();
-    const bd = new Date(b.published_at || b.updated_at || b.created_at || 0).getTime();
-    return bd - ad;
-  });
-  return onlyPublic;
-}
-
-/** 메인 리스트용 데이터 가져오기: 충분히 가져온 뒤 페이지 슬라이스 */
-async function fetchPublicPosts(env: Env, page = 1, perPage = 10) {
-  const base = baseUrl(env);
-
-  // 현재 페이지를 정확히 만들기 위해 넉넉히 가져옴(최대 1000)
-  const need = Math.min(Math.max(page * perPage + 1, 50), 1000);
-  const api = `${base}/api/posts?limit=${need}&offset=0`;
-
-  // ⬇⬇ 서버 사이드에서만 쓰이는 헤더 — 토큰 있으면 같이 보냄
-  const headers: Record<string, string> = { "cache-control": "no-store" };
-  const token =
-    String((env as any).EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim();
-  if (token) headers["x-editor-token"] = token;
-
-  const res = await fetch(api, { headers });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error("[index] posts fetch failed:", res.status, body.slice(0, 500));
-    throw new Error(`posts fetch failed: ${res.status} — ${body.slice(0, 200)}`);
-  }
-  const j = await res.json();
-  const all: ApiPost[] = Array.isArray(j.list) ? j.list : [];
-
-  const pubSorted = toPublicSorted(all);
-  const start = (page - 1) * perPage;
-  const pageSlice = pubSorted.slice(start, start + perPage);
-  const hasNext = pubSorted.length > start + perPage;
-
-  return { items: pageSlice, hasNext };
-}
-
-/** 포스트를 월+연도별로 그룹핑 ("MARCH 2026") */
-function groupByMonth(posts: ApiPost[]): Map<string, ApiPost[]> {
-  const groups = new Map<string, ApiPost[]>();
+/** 포스트를 월+연도별로 그룹핑 ("MARCH 2026") — 매 호출 새 DTF 인스턴스는 낭비이므로 모듈 레벨 캐시 */
+const MONTH_YEAR_FMT = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
+function groupByMonth(posts: PostRow[]): Map<string, PostRow[]> {
+  const groups = new Map<string, PostRow[]>();
   for (const p of posts) {
     const dateIso = p.published_at || p.updated_at || p.created_at || null;
     const d = dateIso ? new Date(dateIso) : null;
-    const key = d
-      ? d.toLocaleDateString("en-US", { month: "long", year: "numeric" }).toUpperCase()
-      : "UNKNOWN";
+    const key = d ? MONTH_YEAR_FMT.format(d).toUpperCase() : "UNKNOWN";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(p);
   }
   return groups;
 }
 
-async function fetchAllTags(env: Env): Promise<string[]> {
-  try {
-    const base = baseUrl(env);
-    const res = await fetch(`${base}/api/tags`, { headers: { "cache-control": "no-store" } });
-    if (!res.ok) return [];
-    const j = await res.json();
-    return Array.isArray(j?.tags) ? j.tags : [];
-  } catch {
-    return [];
-  }
-}
-
 export async function renderIndex(env: Env, page: number = 1): Promise<Response> {
   const perPage = 10;
 
-  const { items: list, hasNext } = await fetchPublicPosts(env, page, perPage);
-  // DB에서 모든 태그 수집 → 환경변수 fallback
-  const dbTags = await fetchAllTags(env);
+  const [{ items: list, hasNext }, dbTags] = await Promise.all([
+    listPostsPaged(Math.max(1, page | 0), perPage),
+    listAllTags(),
+  ]);
   const tagButtons = dbTags.length ? dbTags : getConfiguredTags(env);
 
   // 월별 그룹핑

@@ -39,47 +39,35 @@
     var self = this;
     var tabsContainer = this.container.querySelector(".transcript-tabs");
 
+    function addTab(id, data) {
+      self.transcripts[id] = data;
+      var btn = document.createElement("button");
+      btn.className = "transcript-tab";
+      btn.textContent = data && data.name ? data.name : "Transcript";
+      btn.onclick = function () { self.selectTranscript(id); };
+      tabsContainer.appendChild(btn);
+      if (!self.currentTranscript) self.selectTranscript(id);
+    }
+
     this.options.transcripts.forEach(function (info) {
-      // 인라인 데이터: script[type="application/transcript-data"] 에서 읽기
-      if (info.inline) {
-        var dataScript = self.container.querySelector('script[type="application/transcript-data"][data-id="' + info.id + '"]');
-        if (dataScript) {
-          try {
-            var data = JSON.parse(dataScript.textContent);
-            var id = info.id;
-            self.transcripts[id] = data;
-
-            var btn = document.createElement("button");
-            btn.className = "transcript-tab";
-            btn.textContent = data.name || "Transcript";
-            btn.onclick = function () { self.selectTranscript(id); };
-            tabsContainer.appendChild(btn);
-
-            if (!self.currentTranscript) self.selectTranscript(id);
-          } catch (e) {
-            console.error("Failed to parse inline transcript:", e);
-          }
-        }
+      // Inline data provided directly by auto-init
+      if (info.inline && info.data) {
+        addTab(info.id || ("tv-" + Math.random().toString(36).slice(2)), info.data);
         return;
       }
 
-      // URL에서 fetch
+      // URL mode: fetch only http(s), never other schemes
+      if (!info.url || !/^https?:\/\//i.test(info.url)) {
+        console.warn("[transcript] skipped non-http URL:", info && info.url);
+        return;
+      }
       fetch(info.url)
         .then(function (r) {
           if (!r.ok) throw new Error("Failed: " + r.status);
           return r.json();
         })
         .then(function (data) {
-          var id = info.id || info.url;
-          self.transcripts[id] = data;
-
-          var btn = document.createElement("button");
-          btn.className = "transcript-tab";
-          btn.textContent = data.name || "Transcript";
-          btn.onclick = function () { self.selectTranscript(id); };
-          tabsContainer.appendChild(btn);
-
-          if (!self.currentTranscript) self.selectTranscript(id);
+          addTab(info.id || info.url, data);
         })
         .catch(function (err) {
           console.error("Failed to load transcript:", info.url, err);
@@ -121,9 +109,13 @@
     content.innerHTML = html;
   };
 
+  function safeClassToken(s) {
+    return String(s || "").replace(/[^\w-]/g, "");
+  }
+
   TranscriptViewer.prototype.renderEntry = function (entry) {
-    var typeClass = "transcript-entry-" + (entry.type || "agent");
-    var subtypeClass = entry.subtype ? "subtype-" + entry.subtype : "";
+    var typeClass = "transcript-entry-" + safeClassToken(entry.type || "agent");
+    var subtypeClass = entry.subtype ? "subtype-" + safeClassToken(entry.subtype) : "";
     var formatted = this.formatContent(entry);
 
     return '<div class="transcript-entry ' + typeClass + " " + subtypeClass + '">' +
@@ -132,24 +124,37 @@
   };
 
   TranscriptViewer.prototype.formatContent = function (entry) {
-    var content = entry.content || "";
-    var suffix = entry.title_suffix ? " " + entry.title_suffix : "";
+    // XSS-safe pipeline:
+    //   1) Escape entire content to HTML text.
+    //   2) Replace escaped fenced/inline code with <pre>/<code> wrappers.
+    //   3) Convert newlines (outside <pre>) to <br>.
+    var rawContent = entry.content || "";
+    var suffix = entry.title_suffix
+      ? " " + escapeHtml(String(entry.title_suffix))
+      : "";
 
-    // Format code blocks
+    var content = escapeHtml(rawContent);
+
+    // Fenced code blocks. After escaping, ``` stays as ``` and language tag
+    // is limited to \w+. Code body is already HTML-escaped.
     content = content.replace(/```(\w+)?\n([\s\S]*?)```/g, function (_, lang, code) {
-      return '<pre class="code-block"><code class="language-' + (lang || "plaintext") + '">' +
-        escapeHtml(code.trim()) + '</code></pre>';
+      var safeLang = (lang || "plaintext").replace(/[^\w-]/g, "");
+      return '<pre class="code-block"><code class="language-' + safeLang + '">' +
+        code.replace(/^\n+|\n+$/g, "") + '</code></pre>';
     });
 
-    // Format inline code
-    content = content.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Inline code
+    content = content.replace(/`([^`]+)`/g, function (_, code) {
+      return '<code class="inline-code">' + code + '</code>';
+    });
 
-    // Newlines to <br> outside pre
+    // Newlines to <br> outside <pre>
     content = content.split(/(<pre[\s\S]*?<\/pre>)/).map(function (part, i) {
       return i % 2 === 0 ? part.replace(/\n/g, "<br>") : part;
     }).join("");
 
-    // Add markers based on type
+    // Add markers based on type. Labels map uses only known keys; unknown
+    // subtype strings are escaped before concatenation to prevent XSS.
     var marker = "";
     if (entry.type === "agent") {
       var labels = {
@@ -163,9 +168,10 @@
         report: "\ud83d\udccb Report",
         auditor_scratchpad: "\ud83d\udcdd Auditor Scratchpad"
       };
-      var label = labels[entry.subtype];
+      var label = Object.prototype.hasOwnProperty.call(labels, entry.subtype) ? labels[entry.subtype] : null;
       if (!label && entry.subtype) {
-        label = "\ud83d\udd27 " + entry.subtype.replace(/[_-]/g, " ").replace(/\b\w/g, function (l) { return l.toUpperCase(); });
+        var pretty = String(entry.subtype).replace(/[_-]/g, " ").replace(/\b\w/g, function (l) { return l.toUpperCase(); });
+        label = "\ud83d\udd27 " + escapeHtml(pretty);
       }
       if (label) marker = '<div class="tool-call-marker">' + label + suffix + '</div>';
     } else if (entry.type === "result") {
@@ -175,9 +181,10 @@
         tool_output: "\ud83d\udce4 Tool Output",
         bash_output: "\ud83d\udce4 Bash Output"
       };
-      var rLabel = rLabels[entry.subtype];
+      var rLabel = Object.prototype.hasOwnProperty.call(rLabels, entry.subtype) ? rLabels[entry.subtype] : null;
       if (!rLabel && entry.subtype) {
-        rLabel = "\ud83d\udce4 " + entry.subtype.replace(/_/g, " ").replace(/\b\w/g, function (l) { return l.toUpperCase(); });
+        var rPretty = String(entry.subtype).replace(/_/g, " ").replace(/\b\w/g, function (l) { return l.toUpperCase(); });
+        rLabel = "\ud83d\udce4 " + escapeHtml(rPretty);
       }
       if (!rLabel) rLabel = "\ud83d\udce4 Result";
       marker = '<div class="result-marker">' + rLabel + suffix + '</div>';
@@ -198,27 +205,39 @@
     return div.innerHTML;
   }
 
+  function decodeInlineJson(b64) {
+    try {
+      // atob handles ASCII; decode UTF-8 via TextDecoder for safety.
+      var bin = atob(b64);
+      var bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var txt = new TextDecoder("utf-8").decode(bytes);
+      return JSON.parse(txt);
+    } catch (e) {
+      console.error("[transcript] base64/JSON decode failed:", e);
+      return null;
+    }
+  }
+
   // Auto-init on DOMContentLoaded
   document.addEventListener("DOMContentLoaded", function () {
     var containers = document.querySelectorAll("[data-transcript-viewer]");
     containers.forEach(function (el) {
       var transcripts = [];
 
-      // Option 1: data-transcript-urls attribute
+      // Mode 1: data-transcript-urls attribute (comma-separated, http/https only)
       var urls = el.dataset.transcriptUrls;
       if (urls) {
-        transcripts = urls.split(",").map(function (u) { return { url: u.trim() }; });
+        transcripts = urls.split(",")
+          .map(function (u) { return (u || "").trim(); })
+          .filter(function (u) { return /^https?:\/\//i.test(u); })
+          .map(function (u) { return { url: u }; });
       }
 
-      // Option 2: inline JSON config
-      var script = el.querySelector('script[type="application/json"]');
-      if (script) {
-        try {
-          var config = JSON.parse(script.textContent);
-          if (config.transcripts) transcripts = config.transcripts;
-        } catch (e) {
-          console.error("Failed to parse transcript config:", e);
-        }
+      // Mode 2: inline base64-encoded JSON in data attribute
+      if (el.dataset.transcriptInline === "1" && el.dataset.transcriptJson) {
+        var data = decodeInlineJson(el.dataset.transcriptJson);
+        if (data) transcripts.push({ inline: true, id: el.id || "", data: data });
       }
 
       if (transcripts.length > 0) {

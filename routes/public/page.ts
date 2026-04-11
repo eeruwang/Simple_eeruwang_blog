@@ -1,44 +1,25 @@
-/* ───────── 페이지 라우트 (API 경유 버전) ─────────
- * - /:slug 에서 is_page=true인 레코드를 공개 API로 조회
- * - published=true만 기본 허용( ?preview=1 이면 초안 허용)
- * - views/pageview.js 의 renderPostPage 로 렌더
- * - post.ts 와 동일한 SEO/메타 주입 흐름으로 통일
+/* ───────── 페이지 라우트 (DB 직접 호출) ─────────
+ * - /:slug 에서 is_page=true인 레코드를 DB에서 직접 조회
+ * - published=true만 기본 허용. ?draft=1/?preview=1/?debug=1 은 에디터 토큰이
+ *   있을 때만 드래프트 접근 허용(이전 버전은 무인증으로 드래프트가 보였음).
  */
 
 import { renderPostPage } from "../../views/pageview.js";
 import { seoTags } from "../../lib/seo.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 
-// ★ 추가
 import { createDb } from "../../lib/api/editor.js";
 import { resolveBibtexConfig } from "../../lib/bibtex/config.js";
 import { processBib } from "../../lib/bibtex/bibtex.js";
-import { withBibliography } from "../../lib/util.js";  // ← 여기!
-
+import { withBibliography } from "../../lib/util.js";
+import { getPageBySlug } from "../../lib/db/db.js";
 
 type Env = {
   SITE_URL?: string;
   SITE_NAME?: string;
+  EDITOR_PASSWORD?: string;
   [k: string]: unknown;
 };
-
-type ApiPost = {
-  id: number;
-  slug: string;
-  title: string;
-  body_md?: string;
-  tags?: string[];
-  excerpt?: string | null;
-  is_page?: boolean;
-  published?: boolean;
-  published_at?: string | null;
-  cover_url?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-const toBool = (v: unknown) =>
-  v === true || v === 1 || v === "1" || v === "t" || v === "true";
 
 /** HTML Response의 </head> 직전에 headExtra를 주입 */
 async function withSeoHead(resp: Response, headExtra: string): Promise<Response> {
@@ -65,43 +46,28 @@ function baseUrl(env: Env): string {
   return "http://localhost:3000";
 }
 
-async function fetchPublicPageBySlug(
-  env: Env,
-  slug: string,
-  includeDraft?: boolean
-): Promise<ApiPost | null> {
-  const base = baseUrl(env);
-  const qs = new URLSearchParams({ slug });
-  if (includeDraft) qs.set("draft", "1"); // 공개 API가 지원한다면 사용
-  const url = `${base}/api/posts?${qs.toString()}`;
-  const res = await fetch(url, { headers: { "cache-control": "no-store" } });
-  if (!res.ok) return null;
-  const j = await res.json();
-  const item: ApiPost | undefined = j?.item;
-  if (!item) return null;
-
-  // 페이지 전용 필터
-  if (item.is_page !== true) return null;
-  if (!includeDraft && item.published !== true) return null;
-  return item;
-}
-
 export async function renderPage(
   env: Env,
   slug: string,
-  searchParams?: URLSearchParams
+  searchParams?: URLSearchParams,
+  editorToken?: string
 ): Promise<Response> {
   const s = String(slug || "").trim();
   if (!s) return new Response("Not found", { status: 404 });
 
   const debug = !!searchParams?.get?.("debug");
-  const includeDraft =
+
+  // 드래프트/프리뷰는 반드시 에디터 토큰을 요구(이전에는 무인증 노출 버그).
+  const pass = String(env.EDITOR_PASSWORD || (globalThis as any).process?.env?.EDITOR_PASSWORD || "").trim();
+  const tok = String(editorToken || "").trim();
+  const isEditor = !!pass && !!tok && tok === pass;
+  const wantsDraft =
     searchParams?.get?.("draft") === "1" ||
     searchParams?.get?.("preview") === "1" ||
     searchParams?.get?.("debug") === "1";
+  const includeDraft = wantsDraft && isEditor;
 
-  // 공개 API 경유로 통일
-  const rec = await fetchPublicPageBySlug(env, s, includeDraft);
+  const rec = await getPageBySlug(s, { includeDraft });
   if (!rec) return new Response("Not found", { status: 404 });
 
   // ── BibTeX: env → DB 순으로 URL 해석 → 인용 치환 + 참고문헌 생성

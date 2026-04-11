@@ -253,33 +253,74 @@ export async function listByTag(tag: string, page = 1, perPage = 10): Promise<Po
   return filtered.slice(offset, offset + limit);
 }
 
-/** 슬러그로 조회 (포스트/페이지 공용) — 메모리 필터 */
+/** NocoDB `where`는 쉼표/괄호/파이프 등이 메타문자라 값을 이스케이프해야 합니다. */
+function escapeWhereValue(v: string): string {
+  return String(v || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/,/g, "\\,")
+    .replace(/\)/g, "\\)")
+    .replace(/\(/g, "\\(")
+    .replace(/~/g, "\\~");
+}
+
+/** 슬러그로 조회 — 서버사이드 where 필터로 1건만 받아옴 */
 export async function getBySlug(slug: string): Promise<PostRow | null> {
-  const all = await nocoListAll(500, 0, true);
-  const match = all.find(r => String(r.slug || "").toLowerCase() === slug.toLowerCase());
-  return match || null;
+  const esc = escapeWhereValue(slug);
+  const qs = `?where=(slug,eq,${esc})&limit=1`;
+  try {
+    const res = await fetchWithFallback(
+      (v) => (v === "v1" ? recordsUrlV1(qs) : recordsUrlV2(qs)),
+      { headers: headers() }
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    const first = (data?.list || [])[0];
+    return first ? toPostRow(first) : null;
+  } catch {
+    // 마지막 수단으로 in-memory 필터
+    const all = await nocoListAll(500, 0, true);
+    const match = all.find(r => String(r.slug || "").toLowerCase() === slug.toLowerCase());
+    return match || null;
+  }
 }
 
 /** 페이지 전용 */
 export async function getPageBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<PostRow | null> {
   const includeDraft = !!opts?.includeDraft;
-  const all = await nocoListAll(500, 0, true);
-  return all.find(r =>
-    String(r.slug || "").toLowerCase() === slug.toLowerCase() &&
-    r.is_page === true &&
-    (includeDraft || r.published === true)
-  ) || null;
+  const row = await getBySlug(slug);
+  if (!row) return null;
+  if (row.is_page !== true) return null;
+  if (!includeDraft && row.published !== true) return null;
+  return row;
 }
 
 /** 포스트 전용 */
 export async function getPostBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<PostRow | null> {
   const includeDraft = !!opts?.includeDraft;
-  const all = await nocoListAll(500, 0, true);
-  return all.find(r =>
-    String(r.slug || "").toLowerCase() === slug.toLowerCase() &&
-    r.is_page !== true &&
-    (includeDraft || r.published === true)
-  ) || null;
+  const row = await getBySlug(slug);
+  if (!row) return null;
+  if (row.is_page === true) return null;
+  if (!includeDraft && row.published !== true) return null;
+  return row;
+}
+
+/** 공개 포스트의 태그 전부 — NocoDB는 distinct 지원이 약해 메모리 집계 */
+export async function listAllTags(): Promise<string[]> {
+  try {
+    const rows = await nocoListAll(500, 0, false);
+    const set = new Set<string>();
+    for (const r of rows) {
+      if (Array.isArray(r.tags)) {
+        for (const t of r.tags) {
+          const s = String(t || "").trim();
+          if (s) set.add(s);
+        }
+      }
+    }
+    return Array.from(set).sort();
+  } catch {
+    return [];
+  }
 }
 
 // ──────────── CRUD (editor API에서 사용) ────────────
@@ -379,13 +420,16 @@ export async function nocoDelete(id: number): Promise<void> {
   }
 }
 
-/** slug 중복 체크 */
+/** slug 중복 체크 — 서버사이드 where 필터 */
 export async function nocoIsSlugTaken(slug: string, excludeId?: number): Promise<boolean> {
-  const all = await nocoListAll(500, 0, true);
-  const found = all.find(r => String(r.slug || "").toLowerCase() === slug.toLowerCase());
-  if (!found) return false;
-  if (excludeId && found.id === excludeId) return false;
-  return true;
+  try {
+    const found = await getBySlug(slug);
+    if (!found) return false;
+    if (excludeId && found.id === excludeId) return false;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** 설정 테이블 대용 — NocoDB에서는 특수 레코드로 관리하거나 env로 대체 */

@@ -5,11 +5,11 @@
 
 import { pageHtml } from "../../lib/render/render.js";
 import { escapeAttr, escapeHtml } from "../../lib/util.js";
-import { getTags, tagsHtml } from "../../lib/render/tags.js";
+import { getTags } from "../../lib/render/tags.js";
 import { renderTagBar, getConfiguredTags, TAG_SCRIPT } from "../../lib/render/tags-ui.js";
 import { renderBannerRail } from "../../lib/render/banners.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
-import { listByTag, type PostRow, asArrayRows } from "../../lib/db/db.js";
+import { listByTag, listAllTags, type PostRow, asArrayRows } from "../../lib/db/db.js";
 
 type Env = {
   SITE_NAME?: string;
@@ -18,20 +18,6 @@ type Env = {
   SITE_BANNERS?: string;
   BANNERS_JSON_URL?: string;
 };
-
-async function fetchAllTags(env: Env): Promise<string[]> {
-  try {
-    let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
-    if (raw && !/^https?:\/\//i.test(raw)) raw = "https://" + raw;
-    const base = (raw || "http://localhost:3000").replace(/\/+$/, "");
-    const res = await fetch(`${base}/api/tags`, { headers: { "cache-control": "no-store" } });
-    if (!res.ok) return [];
-    const j = await res.json();
-    return Array.isArray(j?.tags) ? j.tags : [];
-  } catch {
-    return [];
-  }
-}
 
 export async function renderTag(env: Env, tag: string, page: number = 1): Promise<Response> {
   const perPage = 10;
@@ -45,7 +31,7 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
   const pageItems = rows.slice(0, perPage);
 
   const hasPrev = page > 1;
-  const dbTags = await fetchAllTags(env);
+  const dbTags = await listAllTags();
   const tagButtons = dbTags.length ? dbTags : getConfiguredTags(env);
 
   const items = pageItems

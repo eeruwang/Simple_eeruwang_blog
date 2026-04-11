@@ -94,6 +94,7 @@ ${showIntro ? `      <div class="site-intro">
   </div>
 
   <script src="/assets/transition.js" defer></script>
+  <script src="/assets/transcript-viewer.js" defer></script>
 </body>
 </html>`;
 }

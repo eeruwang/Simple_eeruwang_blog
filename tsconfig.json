@@ -21,6 +21,7 @@
     "views/**/*.ts",
     "src/**/*.ts",
     "db/**/*.ts",
+    "server/**/*.ts",
     "**/*.d.ts",
     "routes/public/rss.ts"
   ],
