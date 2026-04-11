@@ -74,7 +74,11 @@ async function fetchPublicPosts(env: Env, page = 1, perPage = 10) {
   if (token) headers["x-editor-token"] = token;
 
   const res = await fetch(api, { headers });
-  if (!res.ok) throw new Error(`posts fetch failed: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("[index] posts fetch failed:", res.status, body.slice(0, 500));
+    throw new Error(`posts fetch failed: ${res.status} — ${body.slice(0, 200)}`);
+  }
   const j = await res.json();
   const all: ApiPost[] = Array.isArray(j.list) ? j.list : [];
 

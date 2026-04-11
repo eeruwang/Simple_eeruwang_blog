@@ -689,7 +689,8 @@ export async function handleEditorApiNocoDB(request: Request, env: Env): Promise
       const rows = await noco.nocoListAll(limit, offset, isEditor);
       return json({ list: rows });
     } catch (e: any) {
-      return json({ error: e?.message || String(e) }, 500);
+      console.error("[nocodb] list failed:", e?.message || e, e?.stack || "");
+      return json({ error: e?.message || String(e), driver: "nocodb" }, 500);
     }
   }
 

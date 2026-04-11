@@ -90,11 +90,14 @@ function toNocoFields(data: Partial<PostRow> & Record<string, any>): Record<stri
 
 export async function pingDb(): Promise<{ now: string }> {
   const { host, apiKey, tableId } = getConfig();
-  // 간단히 1건 조회로 헬스체크
-  const res = await fetch(`${host}/api/v2/tables/${tableId}/records?limit=1`, {
+  const url = `${host}/api/v2/tables/${tableId}/records?limit=1`;
+  const res = await fetch(url, {
     headers: { accept: "application/json", "xc-token": apiKey },
   });
-  if (!res.ok) throw new Error(`NocoDB ping failed: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`NocoDB ping failed: ${res.status} @ ${url} :: ${text.slice(0, 300)}`);
+  }
   return { now: new Date().toISOString() };
 }
 
@@ -113,82 +116,79 @@ export function asArrayRows<T>(res: any): T[] {
 export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
   const limit = Math.max(1, Math.min(perPage, 200));
   const offset = (Math.max(1, page) - 1) * limit;
-  const where = `(published,eq,true)~and(is_page,eq,false)`;
-  const sort = `-published_at,-updated_at,-Id`;
-  const url = `${recordsUrl()}?where=${encodeURIComponent(where)}&sort=${sort}&limit=${limit}&offset=${offset}`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) throw new Error(`NocoDB listPosts failed: ${res.status}`);
-  const data = await res.json() as any;
-  return (data.list || []).map(toPostRow);
+  // 충분히 많이 가져와서 메모리 필터 (NocoDB where 문법 이슈 회피)
+  const rows = await nocoListAll(Math.max(limit * 3, 50), 0, false);
+  return rows.slice(offset, offset + limit);
 }
 
 /** 태그별 목록 */
 export async function listByTag(tag: string, page = 1, perPage = 10): Promise<PostRow[]> {
   const limit = Math.max(1, Math.min(perPage, 200));
   const offset = (Math.max(1, page) - 1) * limit;
-  // NocoDB where: tags 컬럼에서 like 검색
-  const where = `(published,eq,true)~and(is_page,eq,false)~and(tags,like,%${tag}%)`;
-  const sort = `-published_at,-updated_at,-Id`;
-  const url = `${recordsUrl()}?where=${encodeURIComponent(where)}&sort=${sort}&limit=${limit}&offset=${offset}`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) throw new Error(`NocoDB listByTag failed: ${res.status}`);
-  const data = await res.json() as any;
-  return (data.list || []).map(toPostRow);
+  const all = await nocoListAll(500, 0, false);
+  const filtered = all.filter((r: PostRow) =>
+    Array.isArray(r.tags) && r.tags.some(t => String(t).toLowerCase() === tag.toLowerCase())
+  );
+  return filtered.slice(offset, offset + limit);
 }
 
-/** 슬러그로 조회 (포스트/페이지 공용) */
+/** 슬러그로 조회 (포스트/페이지 공용) — 메모리 필터 */
 export async function getBySlug(slug: string): Promise<PostRow | null> {
-  const where = `(slug,eq,${slug})`;
-  const url = `${recordsUrl()}?where=${encodeURIComponent(where)}&limit=1`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) return null;
-  const data = await res.json() as any;
-  const list = data.list || [];
-  return list.length > 0 ? toPostRow(list[0]) : null;
+  const all = await nocoListAll(500, 0, true);
+  const match = all.find(r => String(r.slug || "").toLowerCase() === slug.toLowerCase());
+  return match || null;
 }
 
 /** 페이지 전용 */
 export async function getPageBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<PostRow | null> {
   const includeDraft = !!opts?.includeDraft;
-  let where = `(slug,eq,${slug})~and(is_page,eq,true)`;
-  if (!includeDraft) where += `~and(published,eq,true)`;
-  const url = `${recordsUrl()}?where=${encodeURIComponent(where)}&limit=1`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) return null;
-  const data = await res.json() as any;
-  const list = data.list || [];
-  return list.length > 0 ? toPostRow(list[0]) : null;
+  const all = await nocoListAll(500, 0, true);
+  return all.find(r =>
+    String(r.slug || "").toLowerCase() === slug.toLowerCase() &&
+    r.is_page === true &&
+    (includeDraft || r.published === true)
+  ) || null;
 }
 
 /** 포스트 전용 */
 export async function getPostBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<PostRow | null> {
   const includeDraft = !!opts?.includeDraft;
-  let where = `(slug,eq,${slug})~and(is_page,eq,false)`;
-  if (!includeDraft) where += `~and(published,eq,true)`;
-  const url = `${recordsUrl()}?where=${encodeURIComponent(where)}&limit=1`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) return null;
-  const data = await res.json() as any;
-  const list = data.list || [];
-  return list.length > 0 ? toPostRow(list[0]) : null;
+  const all = await nocoListAll(500, 0, true);
+  return all.find(r =>
+    String(r.slug || "").toLowerCase() === slug.toLowerCase() &&
+    r.is_page !== true &&
+    (includeDraft || r.published === true)
+  ) || null;
 }
 
 // ──────────── CRUD (editor API에서 사용) ────────────
 
 /** 전체 목록 (에디터용, 본문 제외) */
 export async function nocoListAll(limit = 100, offset = 0, isEditor = false): Promise<PostRow[]> {
-  const sort = `-published,-published_at,-updated_at,-Id`;
-  let url: string;
-  if (isEditor) {
-    url = `${recordsUrl()}?sort=${sort}&limit=${limit}&offset=${offset}`;
-  } else {
-    const where = `(published,eq,true)~and(is_page,eq,false)`;
-    url = `${recordsUrl()}?where=${encodeURIComponent(where)}&sort=${sort}&limit=${limit}&offset=${offset}`;
-  }
+  // sort/where 없이 일단 전체 조회 → 메모리에서 필터링/정렬
+  const url = `${recordsUrl()}?limit=${limit}&offset=${offset}`;
   const res = await fetch(url, { headers: headers() });
-  if (!res.ok) throw new Error(`NocoDB list failed: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[nocodb] nocoListAll failed:", res.status, text);
+    throw new Error(`NocoDB list failed: ${res.status} ${text.slice(0, 200)}`);
+  }
   const data = await res.json() as any;
-  return (data.list || []).map(toPostRow);
+  let rows = (data.list || []).map(toPostRow);
+
+  // 에디터가 아니면 발행된 포스트만 (NocoDB 컬럼명이 다를 경우 대비)
+  if (!isEditor) {
+    rows = rows.filter((r: PostRow) => r.published === true && r.is_page !== true);
+  }
+
+  // 정렬: 발행일 내림차순 (빈 값은 뒤로)
+  rows.sort((a: PostRow, b: PostRow) => {
+    const da = new Date(a.published_at || a.updated_at || a.created_at || 0).getTime();
+    const db = new Date(b.published_at || b.updated_at || b.created_at || 0).getTime();
+    return db - da;
+  });
+
+  return rows;
 }
 
 /** ID로 단건 조회 */
@@ -257,14 +257,10 @@ export async function nocoDelete(id: number): Promise<void> {
 
 /** slug 중복 체크 */
 export async function nocoIsSlugTaken(slug: string, excludeId?: number): Promise<boolean> {
-  const where = `(slug,eq,${slug})`;
-  const url = `${recordsUrl()}?where=${encodeURIComponent(where)}&limit=1`;
-  const res = await fetch(url, { headers: headers() });
-  if (!res.ok) return false;
-  const data = await res.json() as any;
-  const list = data.list || [];
-  if (!list.length) return false;
-  if (excludeId && list[0].Id === excludeId) return false;
+  const all = await nocoListAll(500, 0, true);
+  const found = all.find(r => String(r.slug || "").toLowerCase() === slug.toLowerCase());
+  if (!found) return false;
+  if (excludeId && found.id === excludeId) return false;
   return true;
 }
 
