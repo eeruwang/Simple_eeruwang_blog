@@ -525,19 +525,49 @@ export async function initEditor() {
   }
 
   /* ───────────────── 이미지 업로드 → Blob → 본문 삽입 ───────────────── */
-  async function uploadImageToBlob(file) {
-    const tok = getToken();
-    if (!tok) throw new Error("로그인 토큰이 없습니다.");
-    const fd = new FormData();
-    fd.set("file", file);
-    const r = await fetch("/api/upload", {
-      method: "POST",
-      headers: { "x-editor-token": tok }, // content-type 지정 금지
-      body: fd,
+  // XHR 기반 업로드 (진행률 콜백 지원)
+  function uploadImageToBlob(file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const tok = getToken();
+      if (!tok) return reject(new Error("로그인 토큰이 없습니다."));
+
+      const fd = new FormData();
+      fd.set("file", file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.setRequestHeader("x-editor-token", tok);
+
+      // 업로드 진행률 이벤트
+      if (xhr.upload && typeof onProgress === "function") {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            onProgress(pct, e.loaded, e.total);
+          }
+        });
+      }
+
+      xhr.onload = () => {
+        let j = {};
+        try { j = JSON.parse(xhr.responseText || "{}"); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300 && j.url) {
+          resolve(j.url);
+        } else {
+          reject(new Error(j.error || `upload failed: ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("network error during upload"));
+      xhr.onabort = () => reject(new Error("upload aborted"));
+
+      xhr.send(fd);
     });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j?.url) throw new Error(j?.error || "upload failed");
-    return j.url;
+  }
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + "B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + "KB";
+    return (n / 1024 / 1024).toFixed(1) + "MB";
   }
 
   function bindImageUpload() {
@@ -550,10 +580,19 @@ export async function initEditor() {
     input.addEventListener("change", async () => {
       const files = input.files ? Array.from(input.files) : [];
       if (!files.length) return;
+      const total = files.length;
       try {
-        setHint("이미지 업로드 중…");
         const urls = [];
-        for (const f of files) urls.push(await uploadImageToBlob(f));
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          const idx = i + 1;
+          const url = await uploadImageToBlob(f, (pct, loaded, totalBytes) => {
+            setHint(
+              `이미지 업로드 (${idx}/${total}) ${f.name} — ${pct}% (${fmtBytes(loaded)}/${fmtBytes(totalBytes)})`
+            );
+          });
+          urls.push(url);
+        }
         const block = urls.map(u => `![](${u})`).join("\n\n") + "\n";
         insertMarkdownAtCursor(block);
         setHint(`이미지 ${urls.length}개 삽입 완료`, 2000);
