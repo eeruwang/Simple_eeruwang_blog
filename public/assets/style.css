@@ -63,11 +63,25 @@ body:not(.editor-page) {
 }
 
 .container {
-  --indent: 16px;
+  /* 2026 방식: 좌우 여백은 뷰포트 크기에 따라 clamp()로 자연스럽게 스케일.
+     - --side-offset: 기존 데스크탑의 "왼쪽 살짝 치우친" 감성을 유지하기 위한 계산식.
+     - margin-inline-start: max(indent, side-offset) 로 iPad 세로(~768px) 같은
+       데드존에서 최소 여백을 보장 (이전엔 13~24px만 나와서 외곽에 붙었음).
+     - env(safe-area-inset-*): 아이폰 노치 / 아이패드 가로 홈 인디케이터 영역 반영.
+       (viewport meta의 viewport-fit=cover 와 함께 동작) */
+  --indent: clamp(1rem, 5vw, 2rem);
+  --side-offset: calc((100% - 700px) * 0.2);
+
   font-size: 120%;
-  margin: 100px 0px 100px calc(0.2 * calc(100% - 700px));
-  max-width: 700px;
   line-height: 1.6;
+  box-sizing: border-box;
+
+  max-inline-size: 700px;
+  margin-block: clamp(48px, 10vw, 100px);
+  margin-inline-start: max(var(--indent), var(--side-offset));
+  margin-inline-end: var(--indent);
+  padding-inline-start: env(safe-area-inset-left, 0px);
+  padding-inline-end: env(safe-area-inset-right, 0px);
 }
 
 /* ================================================================
@@ -79,12 +93,15 @@ h1 {
   margin-top: 12px;
   margin-bottom: 0px;
   line-height: 1.15;
+  /* Safari 17.4+/Chrome 114+: 긴 제목의 자동 줄바꿈을 균형감 있게 처리 */
+  text-wrap: balance;
 }
 
 h2 {
   margin-top: 80px;
   font-size: 170%;
   line-height: 1.2;
+  text-wrap: balance;
 }
 
 a { color: #000; }
@@ -502,17 +519,11 @@ a[href], button, [role="button"], .pressable {
    RESPONSIVE (public pages)
    ================================================================ */
 @media only screen and (max-width: 750px) {
-  h1, h2 { margin-left: var(--indent); margin-right: var(--indent); }
-  .site-topnav { padding-left: var(--indent); padding-right: var(--indent); }
-  .info { padding-left: var(--indent); padding-right: var(--indent); }
-  .date { padding-left: 20px; }
-  body:not(.editor-page) { margin: 0px; }
-  .container { margin: 100px 0px 100px 0px; --indent: 20px; max-width: 100%; }
+  /* 대부분의 요소별 좌우 indent는 이제 .container 의 margin-inline + padding-inline
+     (clamp + safe-area) 이 처리합니다. 여기서는 모바일 전용 미세 조정만 남깁니다. */
   .note > *, .paper > * { max-width: 700px; }
+  /* .info는 fixed width가 필요한 레이아웃이라 그대로 두되 --indent에 맞춤 */
   .info { width: calc(100% - calc(2 * var(--indent))); }
-  .tagrail { margin-left: var(--indent); margin-right: var(--indent); }
-  .pager { margin-left: var(--indent); margin-right: var(--indent); }
-  .site-footer { margin-left: var(--indent); margin-right: var(--indent); }
 }
 
 
