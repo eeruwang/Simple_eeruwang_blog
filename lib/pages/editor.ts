@@ -13,10 +13,11 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <meta name="robots" content="noindex, nofollow">
 <title>Editor</title>
 
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
-<script src="https://unpkg.com/easymde/dist/easymde.min.js"><\/script>
+<!-- CDN preconnect (DNS + TLS 미리) -->
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
 
+<!-- 사이트 공통 스타일만 먼저 로드 (로그인 화면 렌더링용) -->
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body class="editor-page">
@@ -142,12 +143,42 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       } catch { return false; }
     }
 
-    // 로그인 성공 → /assets/editor.js 동적 import → initEditor()
+    // 외부 리소스를 병렬로 지연 로드 (로그인 성공 후에만)
+    function loadStylesheet(href){
+      return new Promise((resolve, reject) => {
+        if (document.querySelector('link[href="'+href+'"]')) return resolve(null);
+        const l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = href;
+        l.onload = () => resolve(null);
+        l.onerror = reject;
+        document.head.appendChild(l);
+      });
+    }
+    function loadScript(src){
+      return new Promise((resolve, reject) => {
+        if (document.querySelector('script[src="'+src+'"]')) return resolve(null);
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = () => resolve(null);
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    // 로그인 성공 → 필요한 외부 리소스 병렬 로드 → editor.js 부팅
     let __booted = false;
     async function bootEditor(){
       if (__booted) return; __booted = true;
       const hint = $("#hint");
       try {
+        // 외부 리소스를 모두 병렬 로드 (이전에는 HTML head에서 blocking 로드)
+        await Promise.all([
+          loadStylesheet("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"),
+          loadStylesheet("https://unpkg.com/easymde/dist/easymde.min.css"),
+          loadScript("https://unpkg.com/easymde/dist/easymde.min.js"),
+        ]);
+
         const mod = await import("/assets/editor.js?ts=" + Date.now());
         const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor);
         if (typeof init === "function") {
