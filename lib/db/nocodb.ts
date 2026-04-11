@@ -135,12 +135,30 @@ function toPostRow(r: any): PostRow {
     }
   }
 
+  // cover_url은 Attachment(배열) 또는 문자열 URL 둘 다 지원
+  let coverUrl: string | null = null;
+  const cov = r.cover_url;
+  if (typeof cov === "string" && cov.trim()) {
+    // 문자열 URL
+    coverUrl = cov;
+    // 혹시 JSON 문자열이면 파싱
+    if (cov.startsWith("[") || cov.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(cov);
+        coverUrl = attachmentToUrl(parsed);
+      } catch { /* keep as-is */ }
+    }
+  } else if (Array.isArray(cov) || (cov && typeof cov === "object")) {
+    // Attachment 필드 (배열 또는 객체)
+    coverUrl = attachmentToUrl(cov);
+  }
+
   return {
     id: r.Id ?? r.id ?? 0,
     slug: r.slug || "",
     title: r.title || "",
     body_md: r.body_md || "",
-    cover_url: r.cover_url || null,
+    cover_url: coverUrl,
     excerpt: r.excerpt || null,
     tags,
     is_page: r.is_page === true || r.is_page === 1 || r.is_page === "true",
@@ -149,6 +167,26 @@ function toPostRow(r: any): PostRow {
     created_at: r.created_at || r.CreatedAt || new Date().toISOString(),
     updated_at: r.updated_at || r.UpdatedAt || new Date().toISOString(),
   };
+}
+
+/** NocoDB Attachment 필드 → 첫 번째 파일의 절대 URL 추출 */
+function attachmentToUrl(att: any): string | null {
+  if (!att) return null;
+  const list = Array.isArray(att) ? att : [att];
+  if (list.length === 0) return null;
+  const first = list[0];
+  if (!first || typeof first !== "object") return null;
+
+  const { host } = getConfig();
+  // NocoDB Attachment 포맷:
+  //   { url, path, title, mimetype, size, signedUrl, thumbnails }
+  // 우선순위: signedUrl > url > path(상대경로를 절대경로로)
+  const raw = first.signedUrl || first.url || first.path || "";
+  if (!raw) return null;
+
+  // 절대 URL이면 그대로, 상대경로면 host 붙이기
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return raw.startsWith("/") ? `${host}${raw}` : `${host}/${raw}`;
 }
 
 // PostRow → NocoDB 필드 변환
