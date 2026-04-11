@@ -64,27 +64,58 @@ async function fetchWithFallback(
   const v2Res = await fetch(v2Url, init);
   if (v2Res.ok) {
     _apiVersion = "v2";
-    console.log("[nocodb] API version: v2");
+    console.log("[nocodb] API version: v2 @", v2Url);
     return v2Res;
   }
-  // 404면 v1 시도
-  if (v2Res.status === 404) {
-    const v1Url = buildUrl("v1");
-    const v1Res = await fetch(v1Url, init);
-    if (v1Res.ok) {
-      _apiVersion = "v1";
-      console.log("[nocodb] API version: v1");
-      return v1Res;
-    }
-    // v1도 404면 두 에러 모두 기록
-    const v1Text = await v1Res.text().catch(() => "");
-    throw new Error(
-      `NocoDB 404 on both v2 and v1. ` +
-      `v2: ${v2Url} | v1: ${v1Url} | v1 body: ${v1Text.slice(0, 200)}`
-    );
+  const v2Text = await v2Res.text().catch(() => "");
+  console.warn("[nocodb] v2 failed:", v2Res.status, v2Url, v2Text.slice(0, 150));
+
+  // v1 시도 (404뿐 아니라 어떤 실패든)
+  const v1Url = buildUrl("v1");
+  const v1Res = await fetch(v1Url, init);
+  if (v1Res.ok) {
+    _apiVersion = "v1";
+    console.log("[nocodb] API version: v1 @", v1Url);
+    return v1Res;
   }
-  // v2가 404가 아니면 그 응답을 그대로 반환
-  return v2Res;
+  const v1Text = await v1Res.text().catch(() => "");
+  console.warn("[nocodb] v1 failed:", v1Res.status, v1Url, v1Text.slice(0, 150));
+
+  throw new Error(
+    `NocoDB all paths failed. ` +
+    `v2(${v2Res.status}): ${v2Url} :: ${v2Text.slice(0, 150)} | ` +
+    `v1(${v1Res.status}): ${v1Url} :: ${v1Text.slice(0, 150)}`
+  );
+}
+
+/** 진단: 여러 NocoDB API 경로를 테스트 */
+export async function nocoDiag(): Promise<any> {
+  const { host, apiKey, tableId } = getConfig();
+  const h = { accept: "application/json", "xc-token": apiKey };
+  const paths = [
+    `/api/v2/tables/${tableId}/records?limit=1`,
+    `/api/v1/db/data/noco/${tableId}/records?limit=1`,
+    `/api/v1/db/meta/tables/${tableId}/records?limit=1`,
+    `/api/v1/db/data/v1/${tableId}/records?limit=1`,
+    `/api/v1/db/data/bulk/noco/${tableId}/records?limit=1`,
+  ];
+  const results: any[] = [];
+  for (const p of paths) {
+    const url = `${host}${p}`;
+    try {
+      const res = await fetch(url, { headers: h });
+      const text = await res.text().catch(() => "");
+      results.push({
+        path: p,
+        status: res.status,
+        ok: res.ok,
+        body: text.slice(0, 300),
+      });
+    } catch (e: any) {
+      results.push({ path: p, error: e?.message || String(e) });
+    }
+  }
+  return { host, tableId, results };
 }
 
 // ──────────── NocoDB Row → PostRow 변환 ────────────

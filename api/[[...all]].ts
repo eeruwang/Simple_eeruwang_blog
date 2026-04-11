@@ -47,6 +47,7 @@ function isPublicApiGet(req: VercelRequest, url: URL): boolean {
   if (p === "/api/posts") return true;
   if (/^\/api\/posts\/\d+$/.test(p)) return true;
   if (p === "/api/diag-db") return true;
+  if (p === "/api/nocodb-diag") return true;
   return false;
 }
 
@@ -151,6 +152,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (e: any) {
         setSecurityHeadersVercel(res);
         return res.status(500).json({ ok: false, error: String(e?.message || e) });
+      }
+    }
+
+    // NocoDB 경로 진단 (공개) — 어떤 API 경로가 동작하는지 테스트
+    if (path === "/api/nocodb-diag" && req.method === "GET") {
+      try {
+        const { nocoDiag } = await import("../lib/db/nocodb.js");
+        const result = await nocoDiag();
+        setSecurityHeadersVercel(res);
+        return res.status(200).json(result);
+      } catch (e: any) {
+        setSecurityHeadersVercel(res);
+        return res.status(500).json({ error: String(e?.message || e) });
       }
     }
 
