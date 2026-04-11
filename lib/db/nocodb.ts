@@ -400,3 +400,69 @@ export async function nocoSetSetting(_key: string, _value: string): Promise<void
   // NocoDB 모드에서는 설정 쓰기를 무시 (환경변수는 런타임에 변경 불가)
   console.warn(`[nocodb] setSetting ignored in NocoDB mode: ${_key}`);
 }
+
+// ──────────── File Upload (NocoDB Storage API) ────────────
+
+/**
+ * NocoDB Storage API에 파일 업로드
+ * POST /api/v2/storage/upload
+ *
+ * @param file - Blob 또는 File 객체
+ * @param filename - 저장할 파일명 (확장자 포함)
+ * @returns 업로드된 파일의 공개 URL과 경로
+ */
+export async function nocoUpload(
+  file: Blob | ArrayBuffer,
+  filename: string,
+  contentType?: string
+): Promise<{ url: string; path: string; title: string; mimetype: string; size: number }> {
+  const { host, apiKey } = getConfig();
+
+  // Blob으로 변환
+  let blob: Blob;
+  if (file instanceof Blob) {
+    blob = file;
+  } else {
+    blob = new Blob([file], { type: contentType || "application/octet-stream" });
+  }
+
+  const fd = new FormData();
+  fd.append("file", blob, filename);
+
+  // NocoDB v2 storage upload
+  const url = `${host}/api/v2/storage/upload`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "xc-token": apiKey,
+      // Content-Type는 FormData가 자동 설정 (boundary 포함)
+    },
+    body: fd as any,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`NocoDB upload failed: ${res.status} ${text.slice(0, 300)}`);
+  }
+
+  // 응답은 업로드된 파일 정보 배열
+  const data = await res.json() as any;
+  const first = Array.isArray(data) ? data[0] : data;
+  if (!first) throw new Error("NocoDB upload: empty response");
+
+  // 절대 URL로 변환
+  const rawUrl = first.signedUrl || first.url || first.path || "";
+  const absUrl = /^https?:\/\//i.test(rawUrl)
+    ? rawUrl
+    : rawUrl.startsWith("/")
+      ? `${host}${rawUrl}`
+      : `${host}/${rawUrl}`;
+
+  return {
+    url: absUrl,
+    path: first.path || "",
+    title: first.title || filename,
+    mimetype: first.mimetype || contentType || "application/octet-stream",
+    size: first.size || 0,
+  };
+}

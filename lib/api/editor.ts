@@ -645,11 +645,57 @@ export async function handleEditorApiNocoDB(request: Request, env: Env): Promise
     return json({ ok: true, html: mdToSafeHtml(md) });
   }
 
-  // ── 업로드 (기존 Vercel Blob 로직 유지 — NocoDB와 무관)
+  // ── 업로드: NocoDB Storage API로 파일 업로드
   if (pathname === "/api/upload" && request.method === "POST") {
-    // 업로드는 원래 handleEditorApi의 로직을 그대로 사용
-    // NocoDB 모드에서도 Vercel Blob 또는 NocoDB Storage 사용 가능
-    return json({ error: "Upload not configured for NocoDB mode" }, 501);
+    if (!isEditor) return json({ error: "unauthorized" }, 401);
+
+    try {
+      let filename = `upload-${Date.now()}`;
+      let contentType = "application/octet-stream";
+      let fileBlob: Blob;
+
+      const ctypeHeader = request.headers.get("content-type") || "";
+
+      if (ctypeHeader.startsWith("multipart/form-data")) {
+        const form = await request.formData();
+        const f = form.get("file");
+        if (!f || typeof f === "string") return json({ error: "file field missing" }, 400);
+        const file = f as File;
+        filename = (form.get("name") as string) || file.name || filename;
+        contentType = file.type || contentType;
+        fileBlob = file;
+      } else {
+        // JSON body: { name, contentType, data: base64 }
+        const body = await readJsonSafe(request);
+        const raw = String(body?.data || "");
+        filename = String(body?.name || filename);
+        contentType = String(body?.contentType || contentType);
+        const m = raw.match(/^data:[^;]+;base64,(.+)$/);
+        const b64 = m ? m[1] : raw;
+        const buf = Buffer.from(b64, "base64");
+        fileBlob = new Blob([buf], { type: contentType });
+      }
+
+      const result = await noco.nocoUpload(fileBlob, filename, contentType);
+
+      // reference.bib면 BibTeX 설정 URL로 저장 (NocoDB 모드는 env 기반이라 경고만)
+      if (filename?.toLowerCase() === "reference.bib") {
+        console.log("[nocodb] reference.bib uploaded:", result.url);
+        console.log("[nocodb] Set BIBTEX_FILE env var to:", result.url);
+      }
+
+      // 기존 클라이언트 코드와 호환되는 응답 형식
+      return json({
+        ok: true,
+        url: result.url,
+        path: result.path,
+        contentType: result.mimetype,
+        size: result.size,
+      });
+    } catch (e: any) {
+      console.error("[nocodb] upload failed:", e?.message || e);
+      return json({ ok: false, error: e?.message || String(e) }, 500);
+    }
   }
 
   // ── Posts CRUD
