@@ -172,7 +172,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         path === "/api/posts" ||
         /^\/api\/posts\/\d+$/.test(path) ||
         path === "/api/diag-db" ||
-        path === "/api/nocodb-diag"
+        path === "/api/nocodb-diag" ||
+        path === "/api/tags"
       );
 
       if (!isPublicGet) {

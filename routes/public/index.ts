@@ -105,11 +105,25 @@ function groupByMonth(posts: ApiPost[]): Map<string, ApiPost[]> {
   return groups;
 }
 
+async function fetchAllTags(env: Env): Promise<string[]> {
+  try {
+    const base = baseUrl(env);
+    const res = await fetch(`${base}/api/tags`, { headers: { "cache-control": "no-store" } });
+    if (!res.ok) return [];
+    const j = await res.json();
+    return Array.isArray(j?.tags) ? j.tags : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function renderIndex(env: Env, page: number = 1): Promise<Response> {
   const perPage = 10;
 
   const { items: list, hasNext } = await fetchPublicPosts(env, page, perPage);
-  const tagButtons = getConfiguredTags(env);
+  // DB에서 모든 태그 수집 → 환경변수 fallback
+  const dbTags = await fetchAllTags(env);
+  const tagButtons = dbTags.length ? dbTags : getConfiguredTags(env);
 
   // 월별 그룹핑
   const monthGroups = groupByMonth(list);

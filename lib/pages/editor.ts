@@ -97,7 +97,12 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
               <input id="title" type="text" placeholder="Title" class="field-title" />
               <div class="editor-fields-row">
                 <input id="slug" type="text" placeholder="Slug (auto)" />
-                <input id="tags" type="text" placeholder="Tags (comma separated)" />
+                <div class="tags-multiselect" id="tagsMulti">
+                  <div class="tags-chips" id="tagsChips"></div>
+                  <input id="tagsInput" type="text" placeholder="Add tag..." autocomplete="off" />
+                  <div class="tags-suggestions" id="tagsSuggestions" hidden></div>
+                </div>
+                <input id="tags" type="hidden" />
               </div>
               <input id="excerpt" type="text" placeholder="Excerpt (auto if empty)" />
               <div class="editor-fields-row">

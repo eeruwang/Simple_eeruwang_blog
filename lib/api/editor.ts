@@ -300,6 +300,22 @@ export async function handleEditorApi(request: Request, env: Env): Promise<Respo
     }
   }
 
+  // ── Tags aggregation: GET /api/tags
+  if (pathname === "/api/tags" && request.method === "GET") {
+    try {
+      const { rows } = await db.query(
+        `select distinct unnest(tags) as tag from posts
+         where published = true and (is_page = false or is_page is null)
+         order by tag asc`
+      );
+      const tags = rows.map((r: any) => String(r.tag || "").trim()).filter(Boolean);
+      return json({ ok: true, tags });
+    } catch (e: any) {
+      if (isMissingTableError(e)) return json({ ok: true, tags: [] });
+      return json({ ok: false, error: e?.message || String(e), tags: [] }, 500);
+    }
+  }
+
   // ── Posts root (/api/posts)
   const postsRoot = pathname === "/api/posts";
   const mById = pathname.match(/^\/api\/posts\/(\d+)$/); // numeric id
@@ -695,6 +711,27 @@ export async function handleEditorApiNocoDB(request: Request, env: Env): Promise
     } catch (e: any) {
       console.error("[nocodb] upload failed:", e?.message || e);
       return json({ ok: false, error: e?.message || String(e) }, 500);
+    }
+  }
+
+  // ── Tags aggregation (NocoDB mode)
+  if (pathname === "/api/tags" && request.method === "GET") {
+    try {
+      const all = await noco.nocoListAll(500, 0, true);
+      const set = new Set<string>();
+      for (const r of all) {
+        if (Array.isArray(r.tags)) {
+          for (const t of r.tags) {
+            const s = String(t || "").trim();
+            if (s) set.add(s);
+          }
+        }
+      }
+      const tags = Array.from(set).sort();
+      return json({ ok: true, tags });
+    } catch (e: any) {
+      console.error("[nocodb] /api/tags failed:", e?.message || e);
+      return json({ ok: false, error: e?.message || String(e), tags: [] }, 500);
     }
   }
 

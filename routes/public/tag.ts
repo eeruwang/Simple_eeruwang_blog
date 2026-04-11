@@ -19,6 +19,20 @@ type Env = {
   BANNERS_JSON_URL?: string;
 };
 
+async function fetchAllTags(env: Env): Promise<string[]> {
+  try {
+    let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
+    if (raw && !/^https?:\/\//i.test(raw)) raw = "https://" + raw;
+    const base = (raw || "http://localhost:3000").replace(/\/+$/, "");
+    const res = await fetch(`${base}/api/tags`, { headers: { "cache-control": "no-store" } });
+    if (!res.ok) return [];
+    const j = await res.json();
+    return Array.isArray(j?.tags) ? j.tags : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function renderTag(env: Env, tag: string, page: number = 1): Promise<Response> {
   const perPage = 10;
   const tNorm = String(tag || "").trim().toLowerCase();
@@ -31,7 +45,8 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
   const pageItems = rows.slice(0, perPage);
 
   const hasPrev = page > 1;
-  const tagButtons = getConfiguredTags(env);
+  const dbTags = await fetchAllTags(env);
+  const tagButtons = dbTags.length ? dbTags : getConfiguredTags(env);
 
   const items = pageItems
     .map((r) => {

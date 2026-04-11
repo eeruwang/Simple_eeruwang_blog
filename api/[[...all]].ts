@@ -48,6 +48,7 @@ function isPublicApiGet(req: VercelRequest, url: URL): boolean {
   if (/^\/api\/posts\/\d+$/.test(p)) return true;
   if (p === "/api/diag-db") return true;
   if (p === "/api/nocodb-diag") return true;
+  if (p === "/api/tags") return true;
   return false;
 }
 

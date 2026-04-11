@@ -253,12 +253,145 @@ export async function initEditor() {
     const title = el.title?.value || "";
     const slugIn = el.slug?.value || "";
     const slug = (slugIn || slugify(title)).trim();
-    const tags = readTagsInput(el.tags?.value || "");
+    const tags = getTagsFromMulti();
     const excerpt = el.excerpt?.value || "";
     const is_page = el.isPage ? !!el.isPage.checked : false;
     const published = wantsPublished();
     const body_md = mde ? mde.value() : (el.md ? el.md.value : "");
     return { title, slug, tags, excerpt, is_page, published, body_md };
+  }
+
+  // ───────────── Tags Multi-Select ─────────────
+  let __allTags = [];          // 전체 존재하는 태그 (DB 기반)
+  let __currentTags = [];      // 현재 글의 태그
+
+  async function loadAllTags() {
+    try {
+      const r = await fetch("/api/tags", { headers: { "cache-control": "no-store" } });
+      if (!r.ok) return;
+      const j = await r.json();
+      __allTags = Array.isArray(j?.tags) ? j.tags : [];
+    } catch {}
+  }
+
+  function getTagsFromMulti() {
+    return __currentTags.slice();
+  }
+
+  function setTagsMulti(tags) {
+    __currentTags = (Array.isArray(tags) ? tags : [])
+      .map(t => String(t).trim())
+      .filter(Boolean);
+    // 중복 제거
+    __currentTags = Array.from(new Set(__currentTags));
+    renderTagsChips();
+    syncHiddenTagsInput();
+  }
+
+  function syncHiddenTagsInput() {
+    if (el.tags) el.tags.value = __currentTags.join(",");
+  }
+
+  function renderTagsChips() {
+    const box = document.getElementById("tagsChips");
+    if (!box) return;
+    box.innerHTML = "";
+    __currentTags.forEach((t) => {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip";
+      chip.innerHTML = '<span class="tag-chip-label"></span><button type="button" class="tag-chip-x" aria-label="Remove">&times;</button>';
+      chip.querySelector(".tag-chip-label").textContent = t;
+      chip.querySelector(".tag-chip-x").addEventListener("click", () => {
+        __currentTags = __currentTags.filter(x => x !== t);
+        renderTagsChips();
+        syncHiddenTagsInput();
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  function addTagFromInput() {
+    const inp = document.getElementById("tagsInput");
+    if (!inp) return;
+    const raw = inp.value.trim().replace(/,$/, "").trim();
+    if (!raw) return;
+    if (!__currentTags.includes(raw)) {
+      __currentTags.push(raw);
+      renderTagsChips();
+      syncHiddenTagsInput();
+      // 새 태그면 전체 태그 목록에도 추가 (즉시 자동완성 반영)
+      if (!__allTags.includes(raw)) __allTags.push(raw);
+    }
+    inp.value = "";
+    hideSuggestions();
+  }
+
+  function showSuggestions(q) {
+    const sugBox = document.getElementById("tagsSuggestions");
+    if (!sugBox) return;
+    const query = q.trim().toLowerCase();
+    const matches = __allTags
+      .filter(t => !__currentTags.includes(t))
+      .filter(t => !query || t.toLowerCase().includes(query))
+      .slice(0, 10);
+    if (!matches.length) { hideSuggestions(); return; }
+    sugBox.innerHTML = "";
+    matches.forEach((t) => {
+      const item = document.createElement("div");
+      item.className = "tag-suggestion";
+      item.textContent = t;
+      item.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        __currentTags.push(t);
+        renderTagsChips();
+        syncHiddenTagsInput();
+        const inp = document.getElementById("tagsInput");
+        if (inp) inp.value = "";
+        hideSuggestions();
+      });
+      sugBox.appendChild(item);
+    });
+    sugBox.hidden = false;
+  }
+
+  function hideSuggestions() {
+    const sugBox = document.getElementById("tagsSuggestions");
+    if (sugBox) sugBox.hidden = true;
+  }
+
+  function bindTagsMulti() {
+    const inp = document.getElementById("tagsInput");
+    const wrap = document.getElementById("tagsMulti");
+    if (!inp || !wrap) return;
+
+    // 포커스 시 전체 서제스천 표시
+    inp.addEventListener("focus", () => showSuggestions(inp.value));
+    inp.addEventListener("input", () => {
+      // 마지막 문자가 콤마면 태그 확정
+      if (inp.value.endsWith(",")) { addTagFromInput(); return; }
+      showSuggestions(inp.value);
+    });
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addTagFromInput();
+      } else if (e.key === "Backspace" && !inp.value && __currentTags.length) {
+        // 빈 입력에서 백스페이스 → 마지막 칩 제거
+        __currentTags.pop();
+        renderTagsChips();
+        syncHiddenTagsInput();
+      } else if (e.key === "Escape") {
+        hideSuggestions();
+      }
+    });
+    // 바깥 클릭 시 서제스천 닫기
+    document.addEventListener("click", (e) => {
+      if (!wrap.contains(e.target)) hideSuggestions();
+    });
+    // 컨테이너 클릭 시 입력 포커스
+    wrap.addEventListener("click", (e) => {
+      if (e.target === wrap || e.target.id === "tagsChips") inp.focus();
+    });
   }
 
   function selectRowInList(id) {
@@ -278,7 +411,7 @@ export async function initEditor() {
     };
     el.title && (el.title.value = rec?.title || "");
     el.slug && (el.slug.value = rec?.slug || "");
-    el.tags && (el.tags.value = (rec?.tags || []).join(", "));
+    setTagsMulti(rec?.tags || []);
     el.excerpt && (el.excerpt.value = rec?.excerpt || "");
     el.isPage && (el.isPage.checked = !!rec?.is_page);
     el.publishedToggle && (el.publishedToggle.checked = !!rec?.published);
@@ -709,6 +842,8 @@ export async function initEditor() {
   bindImageUpload();
   bindBibtexUpload();
   bindTranscriptInsert();
+  bindTagsMulti();
+  loadAllTags();
   await loadList();
   useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
   setHint("에디터 준비됨", 1500);

@@ -1151,3 +1151,95 @@ body.side-open #sideBackdrop { display: block; }
   border: none !important;
 }
 .tv-btn-primary:hover { background: #333 !important; }
+
+/* ================================================================
+   TAGS MULTI-SELECT (editor)
+   ================================================================ */
+.tags-multiselect {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  background: #fff;
+  flex: 1;
+  min-width: 0;
+  cursor: text;
+  transition: border-color .15s;
+}
+.tags-multiselect:focus-within { border-color: #000; }
+
+.tags-chips {
+  display: contents;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 10px;
+  background: #f0f0f0;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+  line-height: 1;
+}
+.tag-chip-label::before { content: "#"; opacity: .5; margin-right: 1px; }
+.tag-chip-x {
+  background: none;
+  border: none !important;
+  padding: 0 !important;
+  width: 18px;
+  height: 18px;
+  border-radius: 50% !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  color: #888;
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.tag-chip-x:hover { background: #ddd; color: #000; }
+
+#tagsInput {
+  border: none !important;
+  padding: 0 4px !important;
+  flex: 1;
+  min-width: 120px;
+  height: 24px;
+  font-size: 13px;
+  background: transparent !important;
+  outline: none;
+}
+#tagsInput:focus { border: none !important; box-shadow: none !important; }
+
+.tags-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.1);
+  z-index: 100;
+}
+.tags-suggestions[hidden] { display: none; }
+.tag-suggestion {
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.tag-suggestion::before { content: "#"; opacity: .4; margin-right: 2px; }
+.tag-suggestion:hover { background: #f5f5f5; }
