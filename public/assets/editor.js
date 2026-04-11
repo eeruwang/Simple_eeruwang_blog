@@ -646,8 +646,18 @@ export async function initEditor() {
   el.isPage && el.isPage.addEventListener("change", () => {
     const s = el.slug ? el.slug.value : (state.slug || ""); updatePermalink(s);
   });
-  el.publishedToggle && el.publishedToggle.addEventListener("change", () => {
+  el.publishedToggle && el.publishedToggle.addEventListener("change", async () => {
     el.status && (el.status.textContent = wantsPublished() ? "published" : "draft");
+    // 자동 저장 (이미 저장된 글일 때만 — 새 글은 title 입력 후 수동 저장)
+    if (state.id) {
+      try {
+        setHint(wantsPublished() ? "발행 중…" : "비공개 전환 중…");
+        await actionApply();
+      } catch (e) {
+        console.error("auto-save on published toggle failed:", e);
+        setHint("자동 저장 실패: " + (e?.message || e), 3000);
+      }
+    }
   });
   el.search && el.search.addEventListener("input", renderList);
   el.filter && el.filter.addEventListener("change", renderList);
