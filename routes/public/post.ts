@@ -1,7 +1,7 @@
 // routes/public/post.ts
-/* ───────── 포스트 라우트 (API 버전) ─────────
+/* ───────── 포스트 라우트 (DB 직접 호출) ─────────
  * - /post/:slug 에서 글 상세 조회
- * - 공개 API(/api/posts?slug=)에서 불러와 렌더
+ * - lib/db/db.ts의 getPostBySlug를 직접 호출 (HTTP 루프백 제거)
  * - is_page=true는 제외, published=true만 허용
  */
 
@@ -12,27 +12,13 @@ import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
 import { createDb } from "../../lib/api/editor.js";                      // DB 접근
 import { resolveBibtexConfig } from "../../lib/bibtex/config.js";       // env→DB 설정 해석
 import { processBib } from "../../lib/bibtex/bibtex.js";                 // 인용 치환 + 참고문헌
-import { withBibliography } from "../../lib/util.js"; 
+import { withBibliography } from "../../lib/util.js";
+import { getPostBySlug } from "../../lib/db/db.js";
 
 type Env = {
   SITE_URL?: string;
   SITE_NAME?: string;
   [k: string]: unknown;
-};
-
-type ApiPost = {
-  id: number;
-  slug: string;
-  title: string;
-  body_md?: string;
-  tags?: string[];
-  excerpt?: string | null;
-  is_page?: boolean;
-  published?: boolean;
-  published_at?: string | null;
-  cover_url?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
 };
 
 /** HTML Response의 </head> 직전에 headExtra를 주입 */
@@ -49,6 +35,7 @@ async function withSeoHead(resp: Response, headExtra: string): Promise<Response>
   if (!h.get("content-type")) h.set("content-type", "text/html; charset=utf-8");
   return new Response(patched, { status: resp.status, headers: h });
 }
+
 function baseUrl(env: Env): string {
   // SITE_URL이 프로토콜 없이 오면 https:// 붙여서 절대 URL로
   let raw = String(env.SITE_URL || (globalThis as any).process?.env?.SITE_URL || "").trim();
@@ -61,19 +48,6 @@ function baseUrl(env: Env): string {
   return "http://localhost:3000";
 }
 
-async function fetchPublicPostBySlug(env: Env, slug: string): Promise<ApiPost | null> {
-  const base = baseUrl(env);
-  const url = `${base}/api/posts?slug=${encodeURIComponent(slug)}`;
-  const res = await fetch(url, { headers: { "cache-control": "no-store" } });
-  if (!res.ok) return null;
-  const j = await res.json();
-  const item: ApiPost | undefined = j?.item;
-  if (!item) return null;
-
-  if (item.published !== true || item.is_page === true) return null;
-  return item;
-}
-
 export async function renderPost(
   env: Env,
   slug: string,
@@ -84,8 +58,10 @@ export async function renderPost(
 
   const debug = !!searchParams?.get?.("debug");
 
-  const rec = await fetchPublicPostBySlug(env, s);
-  if (!rec) return new Response("Not found", { status: 404 });
+  const rec = await getPostBySlug(s);
+  if (!rec || rec.published !== true || rec.is_page === true) {
+    return new Response("Not found", { status: 404 });
+  }
 
   // ✅ siteUrl을 항상 절대 URL로 보장해서 seoTags에 넘김
   const site = baseUrl(env);

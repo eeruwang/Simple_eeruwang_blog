@@ -9,54 +9,58 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <title>Editor</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="mask-icon" href="/favicon.svg" color="#1e2b7a">
 
-<!-- EasyMDE가 필요로 하는 Font Awesome 4 아이콘 + EasyMDE 자체 -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
-<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+<!-- CDN preconnect (DNS + TLS 미리) -->
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
 
-<!-- 사이트 공통 스타일 -->
+<!-- 사이트 공통 스타일만 먼저 로드 (로그인 화면 렌더링용) -->
 <link rel="stylesheet" href="/assets/style.css">
 </head>
 <body class="editor-page">
-  <!-- 로그인 오버레이 -->
+
+  <!-- 로그인 팝업 오버레이 -->
   <div id="lock">
-    <div class="panel">
-      <h2>Editor 로그인</h2>
-      <div class="row row-wrap">
-        <input id="key" type="password" placeholder="Editor password" />
+    <div class="lock-backdrop"></div>
+    <div class="lock-panel">
+      <h2>Editor</h2>
+      <p class="lock-desc">Sign in to manage posts</p>
+      <div class="lock-form">
+        <input id="key" type="password" placeholder="Password" autofocus />
         <button id="signin">Sign in</button>
       </div>
-      <div class="hint" id="lock-hint" aria-live="polite"></div>
+      <div class="lock-hint" id="lock-hint" aria-live="polite"></div>
     </div>
   </div>
 
   <!-- 상단 헤더 -->
-  <header class="editor-header">
-    <button class="auth-only" id="new">New</button>
-    <!-- ↓ display:none 쓰지 않기 -->
+  <header>
+    <a href="/" class="editor-logo">← Blog</a>
     <span id="hint" class="muted" aria-live="polite"></span>
-    <a href="/" class="link-back" data-back>← 목록</a>
+    <div class="editor-header-actions">
+      <button class="auth-only" id="new">+ New</button>
+    </div>
   </header>
 
-
-  <!-- 툴바(필터/프리뷰/Published 토글) -->
+  <!-- 툴바 -->
   <div class="editor-toolbar-sticky auth-only" aria-label="Editor toolbar">
-    <button id="sideToggle" type="button" aria-controls="postVirtualList" aria-expanded="true">☰ 목록</button>
+    <button id="sideToggle" type="button" aria-controls="postVirtualList" aria-expanded="true">☰ Posts</button>
     <select id="filterSelect" aria-label="filter">
-      <option value="all">all</option>
-      <option value="published">published</option>
-      <option value="draft">draft</option>
-      <option value="page">page</option>
-      <option value="post">post</option>
+      <option value="all">All</option>
+      <option value="published">Published</option>
+      <option value="draft">Draft</option>
+      <option value="page">Pages</option>
+      <option value="post">Posts</option>
     </select>
     <span class="spacer"></span>
-    <button id="previewToggleBtn" type="button" aria-pressed="false" title="미리보기 토글">Preview</button>
+    <button id="previewToggleBtn" type="button" aria-pressed="false">Preview</button>
     <label class="check-inline">
-      <input id="publishedToggle" type="checkbox"><span>published</span>
+      <input id="publishedToggle" type="checkbox"><span>Published</span>
     </label>
   </div>
 
@@ -74,42 +78,39 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       <div class="editor-main">
         <section class="editor-split">
           <main class="editor pad-12">
-            <!-- ⬇ 같은 줄: page 체크 + Permalink + status + (Save/Delete/이미지) -->
-            <div class="row row-wrap" style="align-items:center; gap:10px;">
-              <label class="check-inline">
-                <input id="is_page" type="checkbox"><span>page</span>
-              </label>
-              <span id="permalink" class="muted small nowrap">Permalink: /post/</span>
-              <span id="status" class="muted small" style="margin-left:auto">draft</span>
-
-              <!-- 액션 버튼들(같은 줄, 오른쪽 정렬) -->
-              <div class="row-actions" style="display:flex; gap:8px; margin-left:12px;">
+            <div class="editor-actions-bar">
+              <div class="editor-actions-left">
+                <label class="check-inline"><input id="is_page" type="checkbox"><span>Page</span></label>
+                <span id="permalink" class="muted small nowrap">Permalink: /post/</span>
+                <span id="status">draft</span>
+              </div>
+              <div class="editor-actions-right">
                 <button class="auth-only" id="save">Save</button>
-                <button class="auth-only" id="delete">Delete</button>
-                <button class="auth-only" id="attachBtn">이미지</button>
+                <button class="auth-only btn-danger" id="delete">Delete</button>
+                <button class="auth-only btn-ghost" id="attachBtn">Image</button>
                 <input id="attach" type="file" multiple accept="image/*" class="hidden" />
-                <button type="button" class="auth-only" id="bibtexBtn" title="Upload reference.bib">BIBTEX</button>
+                <button type="button" class="auth-only btn-ghost" id="bibtexBtn">BibTeX</button>
                 <input id="bibtexFile" type="file" accept=".bib,text/plain" class="hidden" />
-
+                <button type="button" class="auth-only btn-ghost" id="transcriptBtn">Transcript</button>
               </div>
             </div>
 
-            <div class="row row-wrap">
-              <input id="title" type="text" placeholder="Title" />
-              <input id="slug"  type="text" placeholder="Slug(자동)" />
-              <input id="tags"  type="text" placeholder="쉼표로 여러 태그 입력 (예: diary, reading, test)" />
-            </div>
-
-            <div class="row">
-              <input id="excerpt" type="text" placeholder="Excerpt (목록에 보일 요약 — 비워두면 본문에서 자동 발췌)" />
-            </div>
-
-            <div class="row row-gap">
-              <label class="small muted">Publish date</label>
-              <input id="pubdate" type="date" />
-              <label class="small muted">time</label>
-              <input id="pubtime" type="time" />
-              <span class="small faint">(Published 토글이 켜져 있을 때만 적용)</span>
+            <div class="editor-fields">
+              <input id="title" type="text" placeholder="Title" class="field-title" />
+              <div class="editor-fields-row">
+                <input id="slug" type="text" placeholder="Slug (auto)" />
+                <div class="tags-multiselect" id="tagsMulti">
+                  <div class="tags-chips" id="tagsChips"></div>
+                  <input id="tagsInput" type="text" placeholder="Add tag..." autocomplete="off" />
+                  <div class="tags-suggestions" id="tagsSuggestions" hidden></div>
+                </div>
+                <input id="tags" type="hidden" />
+              </div>
+              <input id="excerpt" type="text" placeholder="Excerpt (auto if empty)" />
+              <div class="editor-fields-row">
+                <input id="pubdate" type="date" />
+                <input id="pubtime" type="time" />
+              </div>
             </div>
 
             <textarea id="md"></textarea>
@@ -149,12 +150,42 @@ export function renderEditorHTML(opts: EditorPageOptions = {}): string {
       } catch { return false; }
     }
 
-    // 로그인 성공 → /assets/editor.js 동적 import → initEditor()
+    // 외부 리소스를 병렬로 지연 로드 (로그인 성공 후에만)
+    function loadStylesheet(href){
+      return new Promise((resolve, reject) => {
+        if (document.querySelector('link[href="'+href+'"]')) return resolve(null);
+        const l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = href;
+        l.onload = () => resolve(null);
+        l.onerror = reject;
+        document.head.appendChild(l);
+      });
+    }
+    function loadScript(src){
+      return new Promise((resolve, reject) => {
+        if (document.querySelector('script[src="'+src+'"]')) return resolve(null);
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = () => resolve(null);
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    // 로그인 성공 → 필요한 외부 리소스 병렬 로드 → editor.js 부팅
     let __booted = false;
     async function bootEditor(){
       if (__booted) return; __booted = true;
       const hint = $("#hint");
       try {
+        // 외부 리소스를 모두 병렬 로드 (이전에는 HTML head에서 blocking 로드)
+        await Promise.all([
+          loadStylesheet("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"),
+          loadStylesheet("https://unpkg.com/easymde/dist/easymde.min.css"),
+          loadScript("https://unpkg.com/easymde/dist/easymde.min.js"),
+        ]);
+
         const mod = await import("/assets/editor.js?ts=" + Date.now());
         const init = (mod && (mod.initEditor || mod.default)) || (window.initEditor);
         if (typeof init === "function") {

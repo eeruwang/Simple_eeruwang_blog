@@ -54,7 +54,7 @@ function absolutize(env: EnvLike, u?: string): string {
 
 /* ===== HTML 프레임 ===== */
 export function pageHtml(
-  { title, body, headExtra = "" }: { title?: string; body: string; headExtra?: string },
+  { title, body, headExtra = "", showIntro = false }: { title?: string; body: string; headExtra?: string; showIntro?: boolean },
   env: EnvLike
 ): string {
   const year = new Date().getFullYear();
@@ -65,30 +65,38 @@ export function pageHtml(
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>${escapeHtml(docTitle)}</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="mask-icon" href="/favicon.svg" color="#1e2b7a">
   <link rel="alternate" type="application/rss+xml" href="/rss.xml" title="RSS">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/assets/style.css">
   ${headExtra}
 </head>
 <body>
-  <header>
-    <h1><a href="/">${escapeHtml(siteName)}</a></h1>
-    <nav>
-      <a href="/about">About</a>
-      <a href="/rss.xml">RSS</a>
-      <a href="/editor">Editor</a>
+  <div class="container">
+    <nav class="site-topnav">
+      <a href="/about">About</a> &middot; <a href="/rss.xml">RSS</a> &middot; <a href="/editor">Editor</a>
     </nav>
-  </header>
+    <h1><a href="/" style="text-decoration:none;color:inherit">${escapeHtml(siteName)}</a></h1>
 
-  <main id="page">
-    ${body}
-  </main>
+    <main id="page">
+${showIntro ? `      <div class="site-intro">
+        <p>I explore the concept of atmosphere grounded in New Phenomenology (Neue Ph&auml;nomenologie), understanding and examining how the sensory dimensions derived from it unfold within the moving image and its exhibition environment.</p>
+        <p class="site-inspired">This blog is inspired by <a href="https://alignment.anthropic.com/">Anthropic's Alignment Science Blog</a>.</p>
+      </div>
+` : ""}      ${body}
+    </main>
 
-  <footer>© ${year} ${siteName}. All rights reserved.</footer>
+    <footer class="site-footer">
+      <p>&copy; ${year} ${escapeHtml(siteName)}</p>
+    </footer>
+  </div>
 
-  <!-- 전환 스크립트는 전역에서 한 번만 -->
   <script src="/assets/transition.js" defer></script>
+  <script src="/assets/transcript-viewer.js" defer></script>
 </body>
 </html>`;
 }

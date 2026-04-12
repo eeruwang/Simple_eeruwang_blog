@@ -101,22 +101,42 @@ function dedupe(items: BannerItem[]): BannerItem[] {
   return out;
 }
 
+/** 배너 레일은 요청마다 바뀌지 않으므로 짧은 TTL 캐시로 중복 fetch를 막습니다. */
+const BANNER_TTL_MS = 60_000;
+const bannerCache = new Map<string, { items: BannerItem[]; ts: number }>();
+
+function cacheKey(env: EnvLike): string {
+  return [env.SITE_BANNERS || "", env.BANNERS_JSON_URL || "", env.SITE_URL || ""].join("|");
+}
+
 /** 배너 레일 HTML 생성 (이미지 있으면 <img>, 없으면 텍스트 라벨) */
 export async function renderBannerRail(env: EnvLike, max = 12): Promise<string> {
-  // 1) ENV 우선
-  let items: BannerItem[] = env.SITE_BANNERS ? parseFromEnv(env.SITE_BANNERS, env) : [];
+  const key = cacheKey(env);
+  const now = Date.now();
+  const cached = bannerCache.get(key);
+  let items: BannerItem[];
+  if (cached && now - cached.ts < BANNER_TTL_MS) {
+    items = cached.items;
+  } else {
+    // 1) ENV 우선
+    items = env.SITE_BANNERS ? parseFromEnv(env.SITE_BANNERS, env) : [];
 
-  // 2) 외부 JSON (선택)
-  if (!items.length && env.BANNERS_JSON_URL) {
-    items = await loadFromJson(env.BANNERS_JSON_URL, env);
+    // 2) 외부 JSON (선택)
+    if (!items.length && env.BANNERS_JSON_URL) {
+      items = await loadFromJson(env.BANNERS_JSON_URL, env);
+    }
+
+    // 3) /assets/banners.json (선택) — SITE_URL이 설정돼 있을 때만 시도합니다.
+    //    이전 버전은 base가 없으면 http://localhost로 폴백해서 매 요청마다
+    //    존재하지 않는 호스트로 fetch를 보내는 문제가 있었습니다.
+    if (!items.length && env.SITE_URL) {
+      items = await loadFromJson("/assets/banners.json", env);
+    }
+
+    items = dedupe(items);
+    bannerCache.set(key, { items, ts: now });
   }
 
-  // 3) /assets/banners.json (선택, 라우터가 서빙할 때만)
-  if (!items.length) {
-    items = await loadFromJson("/assets/banners.json", env);
-  }
-
-  items = dedupe(items);
   if (!items.length) return "";
 
   const list = items.slice(0, Math.max(1, max)).map((b) => {

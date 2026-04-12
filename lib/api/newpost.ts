@@ -3,6 +3,8 @@
 // - posts 스키마/인덱스/트리거 없으면 생성
 // - 요청값으로 새 글 생성(기본값은 샘플 글)
 
+import { Buffer } from "node:buffer";
+import { timingSafeEqual } from "node:crypto";
 import { createDb, type Env as DbEnv } from "./editor.js";
 
 function j(data: any, status = 200) {
@@ -13,17 +15,20 @@ function j(data: any, status = 200) {
 }
 
 function authed(req: Request, env: DbEnv) {
+  // 쿼리 파라미터 인증은 액세스 로그/Referer에 토큰이 남기 때문에 제거했습니다.
   const pass =
     env.EDITOR_PASSWORD ||
     (globalThis as any).process?.env?.EDITOR_PASSWORD ||
     "";
-  const u = new URL(req.url);
   const tok =
     req.headers.get("x-editor-token") ||
     req.headers.get("x-editor-key") ||
-    u.searchParams.get("token") ||
     "";
-  return Boolean(pass && tok && tok === pass);
+  if (!pass || !tok) return false;
+  const a = Buffer.from(String(tok), "utf8");
+  const b = Buffer.from(String(pass), "utf8");
+  if (a.length !== b.length) return false;
+  try { return timingSafeEqual(a, b); } catch { return false; }
 }
 
 async function ensureSchema(db: Awaited<ReturnType<typeof createDb>>) {

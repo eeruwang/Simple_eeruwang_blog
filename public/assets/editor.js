@@ -253,12 +253,145 @@ export async function initEditor() {
     const title = el.title?.value || "";
     const slugIn = el.slug?.value || "";
     const slug = (slugIn || slugify(title)).trim();
-    const tags = readTagsInput(el.tags?.value || "");
+    const tags = getTagsFromMulti();
     const excerpt = el.excerpt?.value || "";
     const is_page = el.isPage ? !!el.isPage.checked : false;
     const published = wantsPublished();
     const body_md = mde ? mde.value() : (el.md ? el.md.value : "");
     return { title, slug, tags, excerpt, is_page, published, body_md };
+  }
+
+  // ───────────── Tags Multi-Select ─────────────
+  let __allTags = [];          // 전체 존재하는 태그 (DB 기반)
+  let __currentTags = [];      // 현재 글의 태그
+
+  async function loadAllTags() {
+    try {
+      const r = await fetch("/api/tags", { headers: { "cache-control": "no-store" } });
+      if (!r.ok) return;
+      const j = await r.json();
+      __allTags = Array.isArray(j?.tags) ? j.tags : [];
+    } catch {}
+  }
+
+  function getTagsFromMulti() {
+    return __currentTags.slice();
+  }
+
+  function setTagsMulti(tags) {
+    __currentTags = (Array.isArray(tags) ? tags : [])
+      .map(t => String(t).trim())
+      .filter(Boolean);
+    // 중복 제거
+    __currentTags = Array.from(new Set(__currentTags));
+    renderTagsChips();
+    syncHiddenTagsInput();
+  }
+
+  function syncHiddenTagsInput() {
+    if (el.tags) el.tags.value = __currentTags.join(",");
+  }
+
+  function renderTagsChips() {
+    const box = document.getElementById("tagsChips");
+    if (!box) return;
+    box.innerHTML = "";
+    __currentTags.forEach((t) => {
+      const chip = document.createElement("span");
+      chip.className = "tag-chip";
+      chip.innerHTML = '<span class="tag-chip-label"></span><button type="button" class="tag-chip-x" aria-label="Remove">&times;</button>';
+      chip.querySelector(".tag-chip-label").textContent = t;
+      chip.querySelector(".tag-chip-x").addEventListener("click", () => {
+        __currentTags = __currentTags.filter(x => x !== t);
+        renderTagsChips();
+        syncHiddenTagsInput();
+      });
+      box.appendChild(chip);
+    });
+  }
+
+  function addTagFromInput() {
+    const inp = document.getElementById("tagsInput");
+    if (!inp) return;
+    const raw = inp.value.trim().replace(/,$/, "").trim();
+    if (!raw) return;
+    if (!__currentTags.includes(raw)) {
+      __currentTags.push(raw);
+      renderTagsChips();
+      syncHiddenTagsInput();
+      // 새 태그면 전체 태그 목록에도 추가 (즉시 자동완성 반영)
+      if (!__allTags.includes(raw)) __allTags.push(raw);
+    }
+    inp.value = "";
+    hideSuggestions();
+  }
+
+  function showSuggestions(q) {
+    const sugBox = document.getElementById("tagsSuggestions");
+    if (!sugBox) return;
+    const query = q.trim().toLowerCase();
+    const matches = __allTags
+      .filter(t => !__currentTags.includes(t))
+      .filter(t => !query || t.toLowerCase().includes(query))
+      .slice(0, 10);
+    if (!matches.length) { hideSuggestions(); return; }
+    sugBox.innerHTML = "";
+    matches.forEach((t) => {
+      const item = document.createElement("div");
+      item.className = "tag-suggestion";
+      item.textContent = t;
+      item.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        __currentTags.push(t);
+        renderTagsChips();
+        syncHiddenTagsInput();
+        const inp = document.getElementById("tagsInput");
+        if (inp) inp.value = "";
+        hideSuggestions();
+      });
+      sugBox.appendChild(item);
+    });
+    sugBox.hidden = false;
+  }
+
+  function hideSuggestions() {
+    const sugBox = document.getElementById("tagsSuggestions");
+    if (sugBox) sugBox.hidden = true;
+  }
+
+  function bindTagsMulti() {
+    const inp = document.getElementById("tagsInput");
+    const wrap = document.getElementById("tagsMulti");
+    if (!inp || !wrap) return;
+
+    // 포커스 시 전체 서제스천 표시
+    inp.addEventListener("focus", () => showSuggestions(inp.value));
+    inp.addEventListener("input", () => {
+      // 마지막 문자가 콤마면 태그 확정
+      if (inp.value.endsWith(",")) { addTagFromInput(); return; }
+      showSuggestions(inp.value);
+    });
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addTagFromInput();
+      } else if (e.key === "Backspace" && !inp.value && __currentTags.length) {
+        // 빈 입력에서 백스페이스 → 마지막 칩 제거
+        __currentTags.pop();
+        renderTagsChips();
+        syncHiddenTagsInput();
+      } else if (e.key === "Escape") {
+        hideSuggestions();
+      }
+    });
+    // 바깥 클릭 시 서제스천 닫기
+    document.addEventListener("click", (e) => {
+      if (!wrap.contains(e.target)) hideSuggestions();
+    });
+    // 컨테이너 클릭 시 입력 포커스
+    wrap.addEventListener("click", (e) => {
+      if (e.target === wrap || e.target.id === "tagsChips") inp.focus();
+    });
   }
 
   function selectRowInList(id) {
@@ -278,7 +411,7 @@ export async function initEditor() {
     };
     el.title && (el.title.value = rec?.title || "");
     el.slug && (el.slug.value = rec?.slug || "");
-    el.tags && (el.tags.value = (rec?.tags || []).join(", "));
+    setTagsMulti(rec?.tags || []);
     el.excerpt && (el.excerpt.value = rec?.excerpt || "");
     el.isPage && (el.isPage.checked = !!rec?.is_page);
     el.publishedToggle && (el.publishedToggle.checked = !!rec?.published);
@@ -397,20 +530,177 @@ export async function initEditor() {
     }
   }
 
-  /* ───────────────── 이미지 업로드 → Blob → 본문 삽입 ───────────────── */
-  async function uploadImageToBlob(file) {
-    const tok = getToken();
-    if (!tok) throw new Error("로그인 토큰이 없습니다.");
-    const fd = new FormData();
-    fd.set("file", file);
-    const r = await fetch("/api/upload", {
-      method: "POST",
-      headers: { "x-editor-token": tok }, // content-type 지정 금지
-      body: fd,
+  /* ───────────────── Transcript 빌더 팝업 ───────────────── */
+  function bindTranscriptInsert() {
+    var btn = document.getElementById("transcriptBtn");
+    if (!btn) return;
+
+    var TYPES = [
+      { value: "agent:thought",           label: "Agent: Thought",        icon: "\ud83d\udcad" },
+      { value: "agent:send_message",      label: "Agent: Message",        icon: "\ud83d\udcac" },
+      { value: "agent:tool_call",         label: "Agent: Tool call",      icon: "\ud83d\udd27" },
+      { value: "agent:bash_tool",         label: "Agent: Bash",           icon: "\ud83d\udd27" },
+      { value: "agent:code_write",        label: "Agent: Code",           icon: "\ud83d\udcbb" },
+      { value: "result:chat_output",      label: "Result: Chat output",   icon: "\ud83e\udd16" },
+      { value: "result:thinking",         label: "Result: Thinking",      icon: "\ud83d\udcad" },
+      { value: "result:bash_output",      label: "Result: Bash output",   icon: "\ud83d\udce4" },
+      { value: "summary:finding",         label: "Summary: Finding",      icon: "\ud83d\udd0d" },
+      { value: "summary:critical_finding",label: "Summary: Critical",     icon: "\u26a0\ufe0f" },
+    ];
+
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+
+      // 이미 열려있으면 무시
+      if (document.getElementById("tv-builder-overlay")) return;
+
+      // 오버레이
+      var overlay = document.createElement("div");
+      overlay.id = "tv-builder-overlay";
+      overlay.className = "tv-builder-overlay";
+
+      var panel = document.createElement("div");
+      panel.className = "tv-builder-panel";
+
+      // 헤더
+      panel.innerHTML =
+        '<div class="tv-builder-header">' +
+          '<h3>Transcript Builder</h3>' +
+          '<button type="button" class="tv-builder-close">\u00d7</button>' +
+        '</div>' +
+        '<div class="tv-builder-body">' +
+          '<div class="tv-builder-field">' +
+            '<label>Title</label>' +
+            '<input type="text" id="tvTitle" placeholder="Transcript title" value="Transcript" />' +
+          '</div>' +
+          '<div id="tvEntries" class="tv-builder-entries"></div>' +
+          '<div class="tv-builder-add-row">' +
+            '<select id="tvTypeSelect"></select>' +
+            '<button type="button" id="tvAddBtn">+ Add entry</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="tv-builder-footer">' +
+          '<button type="button" id="tvCancel">Cancel</button>' +
+          '<button type="button" id="tvInsert" class="tv-btn-primary">Insert into editor</button>' +
+        '</div>';
+
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
+
+      // select 옵션 채우기
+      var sel = document.getElementById("tvTypeSelect");
+      TYPES.forEach(function (t) {
+        var opt = document.createElement("option");
+        opt.value = t.value;
+        opt.textContent = t.icon + " " + t.label;
+        sel.appendChild(opt);
+      });
+
+      // 첫 엔트리 자동 추가
+      addEntry();
+
+      // 엔트리 추가
+      function addEntry(typeVal) {
+        var type = typeVal || sel.value;
+        var info = TYPES.find(function (t) { return t.value === type; }) || TYPES[0];
+        var container = document.getElementById("tvEntries");
+        var idx = container.children.length;
+
+        var row = document.createElement("div");
+        row.className = "tv-entry-row";
+        row.innerHTML =
+          '<div class="tv-entry-header">' +
+            '<span class="tv-entry-badge">' + info.icon + ' ' + info.label + '</span>' +
+            '<button type="button" class="tv-entry-remove" title="Remove">\u00d7</button>' +
+          '</div>' +
+          '<textarea class="tv-entry-text" rows="3" placeholder="Enter content..." data-type="' + type + '"></textarea>';
+
+        container.appendChild(row);
+
+        // 삭제
+        row.querySelector(".tv-entry-remove").addEventListener("click", function () {
+          row.remove();
+        });
+
+        // 새로 추가된 textarea에 포커스
+        var ta = row.querySelector("textarea");
+        setTimeout(function () { ta.focus(); }, 50);
+      }
+
+      document.getElementById("tvAddBtn").addEventListener("click", function () { addEntry(); });
+
+      // 닫기
+      function close() { overlay.remove(); }
+      panel.querySelector(".tv-builder-close").addEventListener("click", close);
+      document.getElementById("tvCancel").addEventListener("click", close);
+      overlay.addEventListener("click", function (ev) { if (ev.target === overlay) close(); });
+
+      // 삽입
+      document.getElementById("tvInsert").addEventListener("click", function () {
+        var title = document.getElementById("tvTitle").value.trim() || "Transcript";
+        var textareas = document.querySelectorAll("#tvEntries .tv-entry-text");
+        if (!textareas.length) { close(); return; }
+
+        var md = '\n:::transcript "' + title + '"\n';
+        textareas.forEach(function (ta) {
+          var type = ta.dataset.type;
+          var content = ta.value.trim();
+          if (content) {
+            md += "\n> " + type + "\n" + content + "\n";
+          }
+        });
+        md += "\n:::end\n";
+
+        insertMarkdownAtCursor(md);
+        close();
+      });
     });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || !j?.url) throw new Error(j?.error || "upload failed");
-    return j.url;
+  }
+
+  /* ───────────────── 이미지 업로드 → Blob → 본문 삽입 ───────────────── */
+  // XHR 기반 업로드 (진행률 콜백 지원)
+  function uploadImageToBlob(file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const tok = getToken();
+      if (!tok) return reject(new Error("로그인 토큰이 없습니다."));
+
+      const fd = new FormData();
+      fd.set("file", file);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.setRequestHeader("x-editor-token", tok);
+
+      // 업로드 진행률 이벤트
+      if (xhr.upload && typeof onProgress === "function") {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            onProgress(pct, e.loaded, e.total);
+          }
+        });
+      }
+
+      xhr.onload = () => {
+        let j = {};
+        try { j = JSON.parse(xhr.responseText || "{}"); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300 && j.url) {
+          resolve(j.url);
+        } else {
+          reject(new Error(j.error || `upload failed: ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("network error during upload"));
+      xhr.onabort = () => reject(new Error("upload aborted"));
+
+      xhr.send(fd);
+    });
+  }
+
+  function fmtBytes(n) {
+    if (n < 1024) return n + "B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + "KB";
+    return (n / 1024 / 1024).toFixed(1) + "MB";
   }
 
   function bindImageUpload() {
@@ -423,10 +713,19 @@ export async function initEditor() {
     input.addEventListener("change", async () => {
       const files = input.files ? Array.from(input.files) : [];
       if (!files.length) return;
+      const total = files.length;
       try {
-        setHint("이미지 업로드 중…");
         const urls = [];
-        for (const f of files) urls.push(await uploadImageToBlob(f));
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          const idx = i + 1;
+          const url = await uploadImageToBlob(f, (pct, loaded, totalBytes) => {
+            setHint(
+              `이미지 업로드 (${idx}/${total}) ${f.name} — ${pct}% (${fmtBytes(loaded)}/${fmtBytes(totalBytes)})`
+            );
+          });
+          urls.push(url);
+        }
         const block = urls.map(u => `![](${u})`).join("\n\n") + "\n";
         insertMarkdownAtCursor(block);
         setHint(`이미지 ${urls.length}개 삽입 완료`, 2000);
@@ -519,8 +818,18 @@ export async function initEditor() {
   el.isPage && el.isPage.addEventListener("change", () => {
     const s = el.slug ? el.slug.value : (state.slug || ""); updatePermalink(s);
   });
-  el.publishedToggle && el.publishedToggle.addEventListener("change", () => {
+  el.publishedToggle && el.publishedToggle.addEventListener("change", async () => {
     el.status && (el.status.textContent = wantsPublished() ? "published" : "draft");
+    // 자동 저장 (이미 저장된 글일 때만 — 새 글은 title 입력 후 수동 저장)
+    if (state.id) {
+      try {
+        setHint(wantsPublished() ? "발행 중…" : "비공개 전환 중…");
+        await actionApply();
+      } catch (e) {
+        console.error("auto-save on published toggle failed:", e);
+        setHint("자동 저장 실패: " + (e?.message || e), 3000);
+      }
+    }
   });
   el.search && el.search.addEventListener("input", renderList);
   el.filter && el.filter.addEventListener("change", renderList);
@@ -532,6 +841,9 @@ export async function initEditor() {
   try { await ensureEditor(); } catch (e) { console.error(e); setHint(e?.message || "에디터 로드 실패"); }
   bindImageUpload();
   bindBibtexUpload();
+  bindTranscriptInsert();
+  bindTagsMulti();
+  loadAllTags();
   await loadList();
   useRecord({ id:null, title:"", slug:"", tags:[], excerpt:"", is_page:false, published:false, body_md:"" });
   setHint("에디터 준비됨", 1500);

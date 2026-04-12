@@ -27,7 +27,7 @@
    - vercel.json 리라이트로 모든 경로가 api/[[...all]]로 위임
 3. 빌드/런타임
    - Build: npm run build (TS → dist/)
-   - Runtime: Node 20
+   - Runtime: Node 22
 
 ---
 
@@ -47,7 +47,7 @@
 ---
 
 ## 요구 사항
-- Node.js 20+
+- Node.js 22+
 - PostgreSQL 15+ (Neon/Supabase 등 매니지드 권장, sslmode=require)
 - (선택) **Vercel 계정**
 

@@ -1,5 +1,5 @@
 # ---- build ----
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY . .
 RUN npm run build
 
 # ---- runtime ----
-FROM node:20-slim AS runner
+FROM node:22-slim AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
 WORKDIR /app

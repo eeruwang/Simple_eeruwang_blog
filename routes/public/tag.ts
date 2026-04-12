@@ -5,11 +5,11 @@
 
 import { pageHtml } from "../../lib/render/render.js";
 import { escapeAttr, escapeHtml } from "../../lib/util.js";
-import { getTags, tagsHtml } from "../../lib/render/tags.js";
+import { getTags } from "../../lib/render/tags.js";
 import { renderTagBar, getConfiguredTags, TAG_SCRIPT } from "../../lib/render/tags-ui.js";
 import { renderBannerRail } from "../../lib/render/banners.js";
 import { deriveExcerptFromRecord } from "../../lib/excerpt.js";
-import { listByTag, type PostRow, asArrayRows } from "../../lib/db/db.js";
+import { listByTag, listAllTags, type PostRow, asArrayRows } from "../../lib/db/db.js";
 
 type Env = {
   SITE_NAME?: string;
@@ -31,30 +31,34 @@ export async function renderTag(env: Env, tag: string, page: number = 1): Promis
   const pageItems = rows.slice(0, perPage);
 
   const hasPrev = page > 1;
-  const tagButtons = getConfiguredTags(env);
+  const dbTags = await listAllTags();
+  const tagButtons = dbTags.length ? dbTags : getConfiguredTags(env);
 
   const items = pageItems
     .map((r) => {
       const slug = (r.slug || "").trim();
       const title = r.title || "(제목 없음)";
-      const dateIso = r.published_at || r.created_at || null;
-      const dateStr = dateIso ? new Date(dateIso).toLocaleDateString("en-GB") : "";
-      const coverSrc = r.cover_url || "";
       const excerpt = (r.excerpt || deriveExcerptFromRecord(r as any, 160) || "").trim();
-      const dataTags = getTags(r).map((x) => String(x).trim()).filter(Boolean).join(",");
+      const postTags = getTags(r).map((x) => String(x).trim().toLowerCase()).filter(Boolean);
+      const dataTags = postTags.join(",");
+      const isPaper = postTags.includes("paper");
+      const cls = isPaper ? "paper" : "note";
 
-      return `<article class="post" data-tags="${escapeAttr(dataTags)}">
-        ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
-        <h2 class="title"><a href="/post/${encodeURIComponent(slug)}">${escapeHtml(title)}</a></h2>
-        <div class="row"><div class="meta">${escapeHtml(dateStr)}</div>${tagsHtml(r)}</div>
-        ${excerpt ? `<p class="excerpt">${escapeHtml(excerpt)}</p>` : ""}
-      </article>`;
+      if (isPaper) {
+        return `<a href="/post/${encodeURIComponent(slug)}" class="${cls}" data-tags="${escapeAttr(dataTags)}">
+          <h3>${escapeHtml(title)}</h3>
+          ${excerpt ? `<p class="description">${escapeHtml(excerpt)}</p>` : ""}
+        </a>`;
+      }
+      return `<a href="/post/${encodeURIComponent(slug)}" class="${cls}" data-tags="${escapeAttr(dataTags)}">
+        <h3>${escapeHtml(title)}</h3>${excerpt ? `<p class="description">${escapeHtml(excerpt)}</p>` : ""}
+      </a>`;
     })
     .join("");
 
-  const pager = `<nav style="display:flex;gap:12px;margin-top:18px">
-    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}">« 이전</a>` : ""}
-    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}">다음 »</a>` : ""}
+  const pager = `<nav class="pager">
+    ${hasPrev ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page - 1}">&larr; Previous</a>` : ""}
+    ${hasNext ? `<a href="/tag/${encodeURIComponent(tag)}?page=${page + 1}">Next &rarr;</a>` : ""}
   </nav>`;
 
   const bannerRailHtml = await renderBannerRail({

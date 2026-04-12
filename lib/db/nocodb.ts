@@ -1,0 +1,512 @@
+// lib/db/nocodb.ts
+// NocoDB REST API client — drop-in replacement for PostgreSQL queries
+//
+// 환경변수:
+//   NOCODB_HOST      — NocoDB 서버 URL (예: https://db.eeruwang.me)
+//   NOCODB_API_KEY   — xc-token 인증 토큰
+//   NOCODB_TABLE_ID  — posts 테이블 ID (NocoDB 대시보드에서 확인)
+//
+// API 버전 자동 감지: v2 먼저 시도 → 실패 시 v1 fallback
+
+import type { PostRow } from "./db.js";
+
+// ──────────── Config ────────────
+
+function getConfig() {
+  const host = (process.env.NOCODB_HOST || "").replace(/\/+$/, "");
+  const apiKey = process.env.NOCODB_API_KEY || "";
+  const tableId = process.env.NOCODB_TABLE_ID || "";
+  if (!host || !apiKey || !tableId) {
+    throw new Error("[nocodb] Missing NOCODB_HOST, NOCODB_API_KEY, or NOCODB_TABLE_ID");
+  }
+  return { host, apiKey, tableId };
+}
+
+function headers(): Record<string, string> {
+  const { apiKey } = getConfig();
+  return {
+    "accept": "application/json",
+    "xc-token": apiKey,
+    "Content-Type": "application/json",
+  };
+}
+
+// API 버전 캐싱 (첫 성공한 버전을 기억)
+let _apiVersion: "v2" | "v1" | null = null;
+
+function recordsUrlV2(extra = ""): string {
+  const { host, tableId } = getConfig();
+  return `${host}/api/v2/tables/${tableId}/records${extra}`;
+}
+function recordsUrlV1(extra = ""): string {
+  const { host, tableId } = getConfig();
+  // v1 경로: /api/v1/db/data/v1/noco/{projectId}/{tableName}/records
+  // 하지만 테이블 ID만 있을 때는 /api/v1/db/meta/tables/{tableId}/rows도 가능
+  return `${host}/api/v1/db/data/noco/${tableId}/records${extra}`;
+}
+function recordsUrl(extra = ""): string {
+  if (_apiVersion === "v1") return recordsUrlV1(extra);
+  return recordsUrlV2(extra);
+}
+
+/** 양쪽 버전을 시도하여 성공하는 쪽을 사용 */
+async function fetchWithFallback(
+  buildUrl: (version: "v2" | "v1") => string,
+  init?: RequestInit
+): Promise<Response> {
+  // 이미 감지된 버전이 있으면 그것만 사용
+  if (_apiVersion) {
+    return fetch(buildUrl(_apiVersion), init);
+  }
+
+  // v2 먼저 시도
+  const v2Url = buildUrl("v2");
+  const v2Res = await fetch(v2Url, init);
+  if (v2Res.ok) {
+    _apiVersion = "v2";
+    console.log("[nocodb] API version: v2 @", v2Url);
+    return v2Res;
+  }
+  const v2Text = await v2Res.text().catch(() => "");
+  console.warn("[nocodb] v2 failed:", v2Res.status, v2Url, v2Text.slice(0, 150));
+
+  // v1 시도 (404뿐 아니라 어떤 실패든)
+  const v1Url = buildUrl("v1");
+  const v1Res = await fetch(v1Url, init);
+  if (v1Res.ok) {
+    _apiVersion = "v1";
+    console.log("[nocodb] API version: v1 @", v1Url);
+    return v1Res;
+  }
+  const v1Text = await v1Res.text().catch(() => "");
+  console.warn("[nocodb] v1 failed:", v1Res.status, v1Url, v1Text.slice(0, 150));
+
+  throw new Error(
+    `NocoDB all paths failed. ` +
+    `v2(${v2Res.status}): ${v2Url} :: ${v2Text.slice(0, 150)} | ` +
+    `v1(${v1Res.status}): ${v1Url} :: ${v1Text.slice(0, 150)}`
+  );
+}
+
+/** 진단: 여러 NocoDB API 경로를 테스트 */
+export async function nocoDiag(): Promise<any> {
+  const { host, apiKey, tableId } = getConfig();
+  const h = { accept: "application/json", "xc-token": apiKey };
+  const paths = [
+    `/api/v2/tables/${tableId}/records?limit=1`,
+    `/api/v1/db/data/noco/${tableId}/records?limit=1`,
+    `/api/v1/db/meta/tables/${tableId}/records?limit=1`,
+    `/api/v1/db/data/v1/${tableId}/records?limit=1`,
+    `/api/v1/db/data/bulk/noco/${tableId}/records?limit=1`,
+  ];
+  const results: any[] = [];
+  for (const p of paths) {
+    const url = `${host}${p}`;
+    try {
+      const res = await fetch(url, { headers: h });
+      const text = await res.text().catch(() => "");
+      results.push({
+        path: p,
+        status: res.status,
+        ok: res.ok,
+        body: text.slice(0, 300),
+      });
+    } catch (e: any) {
+      results.push({ path: p, error: e?.message || String(e) });
+    }
+  }
+  return { host, tableId, results };
+}
+
+// ──────────── NocoDB Row → PostRow 변환 ────────────
+
+function toPostRow(r: any): PostRow {
+  // NocoDB는 필드명이 대소문자 그대로 올 수 있음
+  // tags: NocoDB에서는 콤마 구분 문자열 또는 JSON 배열
+  let tags: string[] | null = null;
+  if (Array.isArray(r.tags)) {
+    tags = r.tags;
+  } else if (typeof r.tags === "string" && r.tags.trim()) {
+    try {
+      const parsed = JSON.parse(r.tags);
+      tags = Array.isArray(parsed) ? parsed : r.tags.split(",").map((s: string) => s.trim()).filter(Boolean);
+    } catch {
+      tags = r.tags.split(",").map((s: string) => s.trim()).filter(Boolean);
+    }
+  }
+
+  // cover_url은 Attachment(배열) 또는 문자열 URL 둘 다 지원
+  let coverUrl: string | null = null;
+  const cov = r.cover_url;
+  if (typeof cov === "string" && cov.trim()) {
+    // 문자열 URL
+    coverUrl = cov;
+    // 혹시 JSON 문자열이면 파싱
+    if (cov.startsWith("[") || cov.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(cov);
+        coverUrl = attachmentToUrl(parsed);
+      } catch { /* keep as-is */ }
+    }
+  } else if (Array.isArray(cov) || (cov && typeof cov === "object")) {
+    // Attachment 필드 (배열 또는 객체)
+    coverUrl = attachmentToUrl(cov);
+  }
+
+  return {
+    id: r.Id ?? r.id ?? 0,
+    slug: r.slug || "",
+    title: r.title || "",
+    body_md: r.body_md || "",
+    cover_url: coverUrl,
+    excerpt: r.excerpt || null,
+    tags,
+    is_page: r.is_page === true || r.is_page === 1 || r.is_page === "true",
+    published: r.published === true || r.published === 1 || r.published === "true",
+    published_at: r.published_at || null,
+    created_at: r.created_at || r.CreatedAt || new Date().toISOString(),
+    updated_at: r.updated_at || r.UpdatedAt || new Date().toISOString(),
+  };
+}
+
+/** NocoDB Attachment 필드 → 첫 번째 파일의 절대 URL 추출 */
+function attachmentToUrl(att: any): string | null {
+  if (!att) return null;
+  const list = Array.isArray(att) ? att : [att];
+  if (list.length === 0) return null;
+  const first = list[0];
+  if (!first || typeof first !== "object") return null;
+
+  const { host } = getConfig();
+  // NocoDB Attachment 포맷:
+  //   { url, path, title, mimetype, size, signedUrl, thumbnails }
+  // 우선순위: signedUrl > url > path(상대경로를 절대경로로)
+  const raw = first.signedUrl || first.url || first.path || "";
+  if (!raw) return null;
+
+  // 절대 URL이면 그대로, 상대경로면 host 붙이기
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return raw.startsWith("/") ? `${host}${raw}` : `${host}/${raw}`;
+}
+
+// PostRow → NocoDB 필드 변환
+function toNocoFields(data: Partial<PostRow> & Record<string, any>): Record<string, any> {
+  const fields: Record<string, any> = {};
+  if (data.title !== undefined) fields.title = data.title;
+  if (data.body_md !== undefined) fields.body_md = data.body_md;
+  if ((data as any).bodyMd !== undefined) fields.body_md = (data as any).bodyMd;
+  if (data.slug !== undefined) fields.slug = data.slug;
+  if (data.cover_url !== undefined) fields.cover_url = data.cover_url;
+  if (data.excerpt !== undefined) fields.excerpt = data.excerpt;
+  if (data.is_page !== undefined) fields.is_page = !!data.is_page;
+  if (data.published !== undefined) fields.published = !!data.published;
+  if (data.published_at !== undefined) fields.published_at = data.published_at;
+  if (data.tags !== undefined) {
+    // NocoDB에 콤마 구분 문자열로 저장
+    fields.tags = Array.isArray(data.tags) ? data.tags.join(",") : String(data.tags || "");
+  }
+  return fields;
+}
+
+// ──────────── Public API (db.ts와 동일 시그니처) ────────────
+
+export async function pingDb(): Promise<{ now: string }> {
+  const res = await fetchWithFallback(
+    (v) => (v === "v1" ? recordsUrlV1("?limit=1") : recordsUrlV2("?limit=1")),
+    { headers: headers() }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`NocoDB ping failed: ${res.status} :: ${text.slice(0, 300)}`);
+  }
+  return { now: new Date().toISOString() };
+}
+
+export function driverKind(): string {
+  return "nocodb";
+}
+
+export function asArrayRows<T>(res: any): T[] {
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.rows)) return res.rows;
+  if (res && Array.isArray(res.list)) return res.list;
+  return [];
+}
+
+/** 목록 (게시글만, 발행된 것만) */
+export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
+  const limit = Math.max(1, Math.min(perPage, 200));
+  const offset = (Math.max(1, page) - 1) * limit;
+  // 충분히 많이 가져와서 메모리 필터 (NocoDB where 문법 이슈 회피)
+  const rows = await nocoListAll(Math.max(limit * 3, 50), 0, false);
+  return rows.slice(offset, offset + limit);
+}
+
+/** 태그별 목록 */
+export async function listByTag(tag: string, page = 1, perPage = 10): Promise<PostRow[]> {
+  const limit = Math.max(1, Math.min(perPage, 200));
+  const offset = (Math.max(1, page) - 1) * limit;
+  const all = await nocoListAll(500, 0, false);
+  const filtered = all.filter((r: PostRow) =>
+    Array.isArray(r.tags) && r.tags.some(t => String(t).toLowerCase() === tag.toLowerCase())
+  );
+  return filtered.slice(offset, offset + limit);
+}
+
+/** NocoDB `where`는 쉼표/괄호/파이프 등이 메타문자라 값을 이스케이프해야 합니다. */
+function escapeWhereValue(v: string): string {
+  return String(v || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/,/g, "\\,")
+    .replace(/\)/g, "\\)")
+    .replace(/\(/g, "\\(")
+    .replace(/~/g, "\\~");
+}
+
+/** 슬러그로 조회 — 서버사이드 where 필터로 1건만 받아옴 */
+export async function getBySlug(slug: string): Promise<PostRow | null> {
+  const esc = escapeWhereValue(slug);
+  const qs = `?where=(slug,eq,${esc})&limit=1`;
+  try {
+    const res = await fetchWithFallback(
+      (v) => (v === "v1" ? recordsUrlV1(qs) : recordsUrlV2(qs)),
+      { headers: headers() }
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as any;
+    const first = (data?.list || [])[0];
+    return first ? toPostRow(first) : null;
+  } catch {
+    // 마지막 수단으로 in-memory 필터
+    const all = await nocoListAll(500, 0, true);
+    const match = all.find(r => String(r.slug || "").toLowerCase() === slug.toLowerCase());
+    return match || null;
+  }
+}
+
+/** 페이지 전용 */
+export async function getPageBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<PostRow | null> {
+  const includeDraft = !!opts?.includeDraft;
+  const row = await getBySlug(slug);
+  if (!row) return null;
+  if (row.is_page !== true) return null;
+  if (!includeDraft && row.published !== true) return null;
+  return row;
+}
+
+/** 포스트 전용 */
+export async function getPostBySlug(slug: string, opts?: { includeDraft?: boolean }): Promise<PostRow | null> {
+  const includeDraft = !!opts?.includeDraft;
+  const row = await getBySlug(slug);
+  if (!row) return null;
+  if (row.is_page === true) return null;
+  if (!includeDraft && row.published !== true) return null;
+  return row;
+}
+
+/** 공개 포스트의 태그 전부 — NocoDB는 distinct 지원이 약해 메모리 집계 */
+export async function listAllTags(): Promise<string[]> {
+  try {
+    const rows = await nocoListAll(500, 0, false);
+    const set = new Set<string>();
+    for (const r of rows) {
+      if (Array.isArray(r.tags)) {
+        for (const t of r.tags) {
+          const s = String(t || "").trim();
+          if (s) set.add(s);
+        }
+      }
+    }
+    return Array.from(set).sort();
+  } catch {
+    return [];
+  }
+}
+
+// ──────────── CRUD (editor API에서 사용) ────────────
+
+/** 전체 목록 (에디터용, 본문 제외) */
+export async function nocoListAll(limit = 100, offset = 0, isEditor = false): Promise<PostRow[]> {
+  const res = await fetchWithFallback(
+    (v) => (v === "v1" ? recordsUrlV1(`?limit=${limit}&offset=${offset}`) : recordsUrlV2(`?limit=${limit}&offset=${offset}`)),
+    { headers: headers() }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("[nocodb] nocoListAll failed:", res.status, text);
+    throw new Error(`NocoDB list failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  const data = await res.json() as any;
+  let rows = (data.list || []).map(toPostRow);
+
+  // 에디터가 아니면 발행된 포스트만 (NocoDB 컬럼명이 다를 경우 대비)
+  if (!isEditor) {
+    rows = rows.filter((r: PostRow) => r.published === true && r.is_page !== true);
+  }
+
+  // 정렬: 발행일 내림차순 (빈 값은 뒤로)
+  rows.sort((a: PostRow, b: PostRow) => {
+    const da = new Date(a.published_at || a.updated_at || a.created_at || 0).getTime();
+    const db = new Date(b.published_at || b.updated_at || b.created_at || 0).getTime();
+    return db - da;
+  });
+
+  return rows;
+}
+
+/** ID로 단건 조회 */
+export async function nocoGetById(id: number): Promise<PostRow | null> {
+  const res = await fetchWithFallback(
+    (v) => (v === "v1" ? `${recordsUrlV1()}/${id}` : `${recordsUrlV2()}/${id}`),
+    { headers: headers() }
+  );
+  if (!res.ok) return null;
+  const data = await res.json() as any;
+  return toPostRow(data);
+}
+
+/** 레코드 생성 */
+export async function nocoCreate(data: Record<string, any>): Promise<PostRow> {
+  const fields = toNocoFields(data);
+  if (!fields.title) fields.title = "(untitled)";
+  if (!fields.slug) fields.slug = `post-${Date.now()}`;
+  if (fields.published === undefined) fields.published = false;
+  if (fields.is_page === undefined) fields.is_page = false;
+  if (!fields.created_at) fields.created_at = new Date().toISOString();
+  if (!fields.updated_at) fields.updated_at = new Date().toISOString();
+
+  const res = await fetch(recordsUrl(), {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`NocoDB create failed: ${res.status} ${text}`);
+  }
+  const created = await res.json() as any;
+  return toPostRow(created);
+}
+
+/** 레코드 수정 (Id 필수) */
+export async function nocoUpdate(id: number, data: Record<string, any>): Promise<PostRow> {
+  const fields = toNocoFields(data);
+  fields.Id = id;
+  fields.updated_at = new Date().toISOString();
+
+  const res = await fetch(recordsUrl(), {
+    method: "PATCH",
+    headers: headers(),
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`NocoDB update failed: ${res.status} ${text}`);
+  }
+  // PATCH 후 최신 데이터 조회
+  return (await nocoGetById(id)) || toPostRow({ ...fields, id });
+}
+
+/** 레코드 삭제 */
+export async function nocoDelete(id: number): Promise<void> {
+  const res = await fetch(recordsUrl(), {
+    method: "DELETE",
+    headers: headers(),
+    body: JSON.stringify({ Id: id }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`NocoDB delete failed: ${res.status} ${text}`);
+  }
+}
+
+/** slug 중복 체크 — 서버사이드 where 필터 */
+export async function nocoIsSlugTaken(slug: string, excludeId?: number): Promise<boolean> {
+  try {
+    const found = await getBySlug(slug);
+    if (!found) return false;
+    if (excludeId && found.id === excludeId) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 설정 테이블 대용 — NocoDB에서는 특수 레코드로 관리하거나 env로 대체 */
+// NocoDB 모드에서는 settings를 환경변수로 처리
+export async function nocoGetSetting(key: string): Promise<string | null> {
+  // 환경변수에서 읽기 (SETTING_key_name 형태)
+  const envKey = `SETTING_${key.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+  return process.env[envKey] || null;
+}
+
+export async function nocoSetSetting(_key: string, _value: string): Promise<void> {
+  // NocoDB 모드에서는 설정 쓰기를 무시 (환경변수는 런타임에 변경 불가)
+  console.warn(`[nocodb] setSetting ignored in NocoDB mode: ${_key}`);
+}
+
+// ──────────── File Upload (NocoDB Storage API) ────────────
+
+/**
+ * NocoDB Storage API에 파일 업로드
+ * POST /api/v2/storage/upload
+ *
+ * @param file - Blob 또는 File 객체
+ * @param filename - 저장할 파일명 (확장자 포함)
+ * @returns 업로드된 파일의 공개 URL과 경로
+ */
+export async function nocoUpload(
+  file: Blob | ArrayBuffer,
+  filename: string,
+  contentType?: string
+): Promise<{ url: string; path: string; title: string; mimetype: string; size: number }> {
+  const { host, apiKey } = getConfig();
+
+  // Blob으로 변환
+  let blob: Blob;
+  if (file instanceof Blob) {
+    blob = file;
+  } else {
+    blob = new Blob([file], { type: contentType || "application/octet-stream" });
+  }
+
+  const fd = new FormData();
+  fd.append("file", blob, filename);
+
+  // NocoDB v2 storage upload
+  const url = `${host}/api/v2/storage/upload`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "xc-token": apiKey,
+      // Content-Type는 FormData가 자동 설정 (boundary 포함)
+    },
+    body: fd as any,
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`NocoDB upload failed: ${res.status} ${text.slice(0, 300)}`);
+  }
+
+  // 응답은 업로드된 파일 정보 배열
+  const data = await res.json() as any;
+  const first = Array.isArray(data) ? data[0] : data;
+  if (!first) throw new Error("NocoDB upload: empty response");
+
+  // 절대 URL로 변환
+  const rawUrl = first.signedUrl || first.url || first.path || "";
+  const absUrl = /^https?:\/\//i.test(rawUrl)
+    ? rawUrl
+    : rawUrl.startsWith("/")
+      ? `${host}${rawUrl}`
+      : `${host}/${rawUrl}`;
+
+  return {
+    url: absUrl,
+    path: first.path || "",
+    title: first.title || filename,
+    mimetype: first.mimetype || contentType || "application/octet-stream",
+    size: first.size || 0,
+  };
+}

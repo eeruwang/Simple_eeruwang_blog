@@ -191,17 +191,15 @@ export async function renderPostPage(
     <!-- transition.js는 pageHtml에서 전역 1회 로드 -->
   `;
 
-  const body = `<article>
+  const body = `<article class="article-page">
+  <p class="article-back"><a href="/" data-back>&larr; Back to all posts</a></p>
+
+  <h1 class="article-title">${escapeHtml(title)}</h1>
+  ${dateStr ? `<p class="article-meta">${dateStr}</p>` : ""}
+
   ${coverSrc ? `<img class="cover" src="${escapeAttr(coverSrc)}" alt="">` : ""}
 
-  <div class="titlebar" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 6px;">
-    <h1 class="title" style="margin:0;">${escapeHtml(title)}</h1>
-    <div class="meta">${dateStr}</div>
-    <a href="/" data-back style="margin-left:auto; text-decoration:none;">← 돌아가기</a>
-  </div>
-
-  <div class="tags" style="margin-top:6px;">${tagsHtml(r as any)}</div>
-  <div id="content" class="content" style="margin-top:8px">${contentHtml}</div>
+  <div id="content" class="content">${contentHtml}</div>
 </article>
 
 ${bannersHtml}

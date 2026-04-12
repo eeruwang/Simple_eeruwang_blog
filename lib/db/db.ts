@@ -1,14 +1,29 @@
 // lib/db/db.ts
-/* Cross-runtime Postgres client:
+/* Cross-runtime database client:
+ * - NocoDB(REST API): NOCODB_HOST 설정 시 사용
  * - Vercel/Neon(serverless): @neondatabase/serverless (fetch 기반)
  * - Docker/Node: pg Pool (TCP)
  *
  * 선택 규칙
+ * 0) NOCODB_HOST + NOCODB_API_KEY + NOCODB_TABLE_ID 가 있으면 NocoDB
  * 1) process.env.NEON_DATABASE_URL 가 있으면 네온 드라이버 사용
  * 2) 아니면 process.env.DATABASE_URL 사용
  * 3) URL에 'neon.tech' 포함되면 네온 드라이버 강제
  * 4) 그 외엔 pg Pool
  */
+
+import * as nocodb from "./nocodb.js";
+
+// NocoDB 모드 감지
+const useNocoDB = !!(
+  process.env.NOCODB_HOST &&
+  process.env.NOCODB_API_KEY &&
+  process.env.NOCODB_TABLE_ID
+);
+
+if (useNocoDB) {
+  console.log("[db] NocoDB mode enabled →", process.env.NOCODB_HOST);
+}
 
 export type PostRow = {
   id: number;
@@ -25,23 +40,10 @@ export type PostRow = {
   updated_at: string;
 };
 
-// --- 배열에 .rows 게터(전역 호환) ---
-try {
-  const desc = Object.getOwnPropertyDescriptor(Array.prototype as any, "rows");
-  if (!desc) {
-    Object.defineProperty(Array.prototype, "rows", {
-      configurable: true,
-      enumerable: false,
-      get: function () { return this; }
-    });
-  }
-} catch { /* no-op */ }
-
-// 배열이면서 .rows 도 가진 타입 (양쪽 패턴 호환)
-type Rows<T> = T[] & { rows: T[] };
-
+// 쿼리 결과: 단순 배열 (이전 버전은 Array.prototype에 .rows 게터를 주입했으나,
+// 전역 원형 오염 방지를 위해 제거했습니다.)
 type Queryable = {
-  query<T = unknown>(text: string, params?: any[]): Promise<Rows<T>>;
+  query<T = unknown>(text: string, params?: any[]): Promise<T[]>;
   end?: () => Promise<void>;
 };
 
@@ -74,15 +76,19 @@ async function createClient(): Promise<Queryable> {
   }
 
   if (looksLikeNeon) {
-    // 서버리스/엣지 친화: fetch 기반 드라이버
+    // 서버리스/엣지 친화: fetch 기반 드라이버.
+    // @neondatabase/serverless는 `sql.query(text, params)`를 통해 파라미터
+    // 바인딩된 쿼리를 실행합니다. 이전에는 존재하지 않는 `.unsafe` 메서드를
+    // 호출했는데, 그 경로를 수정합니다. 반환값은 버전에 따라 배열 또는
+    // `{ rows }`일 수 있어 양쪽을 모두 처리합니다.
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(DATABASE_URL);
+    const sql: any = neon(DATABASE_URL);
 
-    // 배열 + .rows 둘 다 제공
-    const query = async <T = unknown>(text: string, params: any[] = []) => {
-      const arr = (await (sql as any).unsafe(text, params)) as T[];
-      (arr as any).rows = arr; // ← 호환성 부여
-      return arr as Rows<T>;
+    const query = async <T = unknown>(text: string, params: any[] = []): Promise<T[]> => {
+      const result: any = await sql.query(text, params);
+      if (Array.isArray(result)) return result as T[];
+      if (result && Array.isArray(result.rows)) return result.rows as T[];
+      return [];
     };
 
     return { query };
@@ -104,9 +110,7 @@ async function createClient(): Promise<Queryable> {
 
     const query: Queryable["query"] = async (text, params) => {
       const res = await pool.query(text, params);
-      const arr = res.rows as any[];
-      (arr as any).rows = arr; // ← 호환성 부여
-      return arr as Rows<any>;
+      return res.rows as any[];
     };
 
     const end: Queryable["end"] = async () => {
@@ -140,6 +144,7 @@ function pageOffset(page = 1, perPage = 10) {
 
 // 드라이버 확인용
 export function driverKind() {
+  if (useNocoDB) return "nocodb";
   return looksLikeNeon ? "neon" : "pg";
 }
 
@@ -153,6 +158,7 @@ export function asArrayRows<T>(res: any): T[] {
 
 // DB 헬스체크
 export async function pingDb() {
+  if (useNocoDB) return nocodb.pingDb();
   const rows = await query<{ now: string }>("select now() as now");
   return { now: rows[0]?.now };
 }
@@ -161,6 +167,7 @@ export async function pingDb() {
 
 /** 목록(게시글만) */
 export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
+  if (useNocoDB) return nocodb.listPosts(page, perPage);
   const { take, offset } = pageOffset(page, perPage);
   const rows = await query<PostRow>(
     `
@@ -177,6 +184,7 @@ export async function listPosts(page = 1, perPage = 10): Promise<PostRow[]> {
 
 /** 태그별 목록 */
 export async function listByTag(tag: string, page = 1, perPage = 10): Promise<PostRow[]> {
+  if (useNocoDB) return nocodb.listByTag(tag, page, perPage);
   const { take, offset } = pageOffset(page, perPage);
   const rows = await query<PostRow>(
     `
@@ -195,6 +203,7 @@ export async function listByTag(tag: string, page = 1, perPage = 10): Promise<Po
 
 /** 슬러그로 조회(포스트/페이지 공용) */
 export async function getBySlug(slug: string): Promise<PostRow | null> {
+  if (useNocoDB) return nocodb.getBySlug(slug);
   const rows = await query<PostRow>(
     `select * from posts where lower(slug) = lower($1) limit 1`,
     [slug]
@@ -207,6 +216,7 @@ export async function getPageBySlug(
   slug: string,
   opts?: { includeDraft?: boolean }
 ): Promise<PostRow | null> {
+  if (useNocoDB) return nocodb.getPageBySlug(slug, opts);
   const includeDraft = !!opts?.includeDraft;
   const rows = await query<PostRow>(
     `
@@ -228,6 +238,7 @@ export async function getPostBySlug(
   slug: string,
   opts?: { includeDraft?: boolean }
 ): Promise<PostRow | null> {
+  if (useNocoDB) return nocodb.getPostBySlug(slug, opts);
   const includeDraft = !!opts?.includeDraft;
   const rows = await query<PostRow>(
     `
@@ -242,5 +253,33 @@ export async function getPostBySlug(
     [slug, includeDraft]
   );
   return rows[0] || null;
+}
+
+/** 공개 포스트 태그 전부 (distinct + 정렬) */
+export async function listAllTags(): Promise<string[]> {
+  if (useNocoDB) return nocodb.listAllTags();
+  try {
+    const rows = await query<{ tag: string }>(
+      `select distinct unnest(tags) as tag from posts
+       where published = true and (is_page = false or is_page is null)
+       order by tag asc`
+    );
+    return rows.map((r) => String(r.tag || "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 인덱스용: 페이지 단위로 포스트를 가져오면서 다음 페이지 존재 여부를 같이 계산.
+ * `perPage + 1`개를 조회해 look-ahead로 hasNext를 판단합니다.
+ */
+export async function listPostsPaged(
+  page = 1,
+  perPage = 10
+): Promise<{ items: PostRow[]; hasNext: boolean }> {
+  const rows = await listPosts(page, perPage + 1);
+  const hasNext = rows.length > perPage;
+  return { items: rows.slice(0, perPage), hasNext };
 }
 

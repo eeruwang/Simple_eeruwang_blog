@@ -30,26 +30,34 @@ export interface ProcessBibResult {
   allKeys: string[];             // all keys in .bib
 }
 
+// URL별로 파싱 결과를 짧게 캐싱. 매 요청마다 .bib를 fetch + 파싱하는 비용을 제거.
+const BIB_TTL_MS = 5 * 60_000; // 5분
+const bibCache = new Map<string, { text: string; entries: BibEntry[] | null; ts: number }>();
+
 export async function fetchBibFile(url: string): Promise<string> {
+  const now = Date.now();
+  const cached = bibCache.get(url);
+  if (cached && now - cached.ts < BIB_TTL_MS) return cached.text;
+
   const res = await fetch(url, {
     headers: { Accept: "text/plain, application/x-bibtex;q=0.95, */*;q=0.1" }
   });
   if (!res.ok) throw new Error(`Failed to fetch BibTeX file: ${res.status}`);
 
   const ct = (res.headers.get("content-type") || "").toLowerCase();
-  if (/^text\//.test(ct) || /application\/(x-bibtex|json|xml)/.test(ct)) {
-    let t = await res.text();
-    if (t.charCodeAt(0) === 0xFEFF) t = t.slice(1); // BOM
-    return t;
-  }
-
-  const buf = await res.arrayBuffer();
-  const m = /charset=([^;]+)/i.exec(ct);
-  const enc = (m && m[1]) ? m[1].trim() : "utf-8";
   let text: string;
-  try { text = new TextDecoder(enc).decode(new Uint8Array(buf)); }
-  catch { text = new TextDecoder("utf-8").decode(new Uint8Array(buf)); }
-  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  if (/^text\//.test(ct) || /application\/(x-bibtex|json|xml)/.test(ct)) {
+    text = await res.text();
+  } else {
+    const buf = await res.arrayBuffer();
+    const m = /charset=([^;]+)/i.exec(ct);
+    const enc = (m && m[1]) ? m[1].trim() : "utf-8";
+    try { text = new TextDecoder(enc).decode(new Uint8Array(buf)); }
+    catch { text = new TextDecoder("utf-8").decode(new Uint8Array(buf)); }
+  }
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM
+
+  bibCache.set(url, { text, entries: null, ts: now });
   return text;
 }
 
